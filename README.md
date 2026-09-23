@@ -20,6 +20,8 @@ Tamamen **yerel** çalışır: kameralarla ev ağı içinden konuşur, TP-Link b
 | `switch.<kamera>_alarm_isigi` | Alarm çalınca ışık kullanılsın mı |
 | `switch.<kamera>_bildirimler` | Tapo uygulaması bildirimlerini açar/kapatır |
 | `button.<kamera>_yeniden_baslat` | Kamerayı yeniden başlatır (Tanılama bölümünde) |
+| `sensor.<kamera>_baglanti_kuruldu` | Bağlantının ne zaman kurulduğu ve ne zamandır sürdüğü (Tanılama bölümünde) |
+| `sensor.<kamera>_kopma_sayisi` | Bağlantının kaç kez koptuğu ve son kopmanın ayrıntıları (Tanılama bölümünde) |
 
 - Ses veya ışıktan en az biri açık kalmalıdır; kamera bunu zorunlu tutar.
 - Varlık kimlikleri Home Assistant'ın diline göre oluşur. Örneğin İngilizce kurulumda `switch.<kamera>_alarm_sound` olur.
@@ -42,6 +44,8 @@ Tamamen **yerel** çalışır: kameralarla ev ağı içinden konuşur, TP-Link b
 2. Home Assistant'ı yeniden başlatın.
 
 Kameraları yeniden eklemeniz gerekmez. Artık kullanılmayan varlıklar (eski Siren ve Zengin bildirimler) ilk açılışta otomatik silinir.
+
+> v1.7.0 (yazma kuyruğu) geri çekildi. 1.6.4, 1.6.3'ün davranışına tanılama sensörlerini ekler.
 
 > 1.5.0'dan önce sorgulama aralığını seçeneklerden değiştirdiyseniz o değer korunur. TP-Link'teki 5 saniyeye geçmek için seçeneklerden 5 yapın.
 
@@ -119,25 +123,11 @@ Entegrasyon, Home Assistant'ın resmi TP-Link entegrasyonunun kodu örnek alına
 - Her kamera için bir kilit vardır. İstekler sırayla gider, kameraya aynı anda asla iki istek gitmez.
 - Her kameranın kendi zamanlayıcısı vardır. Kameralar birbirini beklemez.
 
-### Anahtara basınca: yazma kuyruğu
-Anahtar değişiklikleri bir kuyruktan geçer. İstenen değer, kamera onu okuyup doğrulayana kadar kuyrukta tutulur.
-
-- **Hemen yazılır:** Anahtara basınca istenen değer kuyruğa alınır ve hemen kameraya gönderilir. TP-Link'teki gibi 0,35 saniye sonra kamera yeniden sorgulanır.
-- **Aynı değer yazılmaz:**
-  - Kamerada zaten o değer varsa hiç yazılmaz.
-  - Aynı ayar için aynı değer zaten kuyruktaysa tekrar gönderilmez.
-- **Doğrulama:** Her sorguda kameradan okunan değer istenenle karşılaştırılır. Aynıysa ayar kuyruktan çıkar.
-  - Doğrulama yalnızca yazmadan **sonra** okunan veriyle yapılır. Yazma sırasında zaten okunmakta olan eski veri yüzünden tekrar yazılmaz.
-- **Düzeltme:** Kamera yazmayı kabul edip değeri uygulamadıysa ayar sonraki sorgularda yeniden yazılır. En fazla 3 kez denenir; kamera yine de tutmazsa vazgeçilir ve log'a hata yazılır.
-- **Geçici hata:** Oturum kapanması (`401`), zaman aşımı ve bağlantı hatalarında kullanıcıya hata gösterilmez. Ayar kuyrukta kalır, log'a uyarı yazılır ve bir sonraki sorguda (5 saniye sonra) tekrar denenir. Kamera ağdan düşmüşse, geri geldiğinde yazılır.
-- **Kalıcı hata:** Kamera komutu reddederse (örneğin `PROTOCOL_FORMAT_ERROR`) veya istek geçersizse (ses ve ışığın ikisi birden kapatılırsa) ekranda hata gösterilir ve ayar kuyruktan çıkarılır.
-- **Son değer geçerli:** Aynı ayara art arda basılırsa yalnızca son değer yazılır. Alarm, alarm sesi ve alarm ışığı tek bir yazmada birlikte gönderilir.
-- **Görünüm:** Bekleyen bir yazma varken anahtar istenen değeri gösterir. `pending_write` özniteliği `true` olur; kamera doğrulayınca `false` olur.
-- **Kimlik doğrulama hatası:** Ayar kuyrukta kalır ve Home Assistant yeniden giriş bilgisi ister.
-- Kuyruk bellekte tutulur. Home Assistant yeniden başlarsa bekleyen yazmalar silinir.
+### Anahtara basınca
+- Tek bir yazma isteği gider. Yazma başarısız olursa ekranda hata gösterilir, tekrar denenmez (TP-Link'teki gibi).
+- TP-Link'teki gibi, 0,35 saniye sonra kamera yeniden sorgulanır ve yeni durum oradan okunur.
 
 ### Yeniden başlatma düğmesine basınca
-- Kuyruktan geçmez, tek seferlik bir komuttur.
 - Yeniden başlatmadan sonra sorgu yapılmaz. Kamera bir süre "kullanılamıyor" görünür ve açılınca kendiliğinden geri gelir.
 
 ### Alarm ayarını okuma
@@ -156,6 +146,25 @@ TP-Link entegrasyonundaki gibi:
 - Kamera MAC adresiyle bulunur. IP'si değişmişse yeni adres kaydedilir ve entegrasyon yeni adresle yeniden bağlanır.
 - Seçeneklerden kapatılabilir. Kapalı kameralar için arama yapılmaz; hiçbir kamerada açık değilse yayın da gönderilmez.
 
+### Bağlantı tanılama
+Her kameranın cihaz sayfasındaki **Tanılama** bölümünde iki sensör vardır. Kameraya ek istek göndermezler; entegrasyonun zaten gördüğünü gösterirler.
+
+- **Bağlantı kuruldu:** Mevcut bağlantının kurulduğu an. Home Assistant bunu hem saat olarak hem de "x dakika önce" olarak gösterir; bu da bağlantının ne zamandır sürdüğüdür. Bağlantı koptuğunda "Bilinmiyor" olur, geri gelince yeni zamanı gösterir.
+- **Kopma sayısı:** Bağlantının kaç kez koptuğu. Art arda başarısız sorgular tek kopma sayılır. Sayı Home Assistant yeniden başlasa da korunur.
+  - `last_disconnect`: son kopmanın zamanı.
+  - `last_disconnect_reason`: son kopmanın sebebi:
+    - `reboot`: kamera ağda ama bağlantıyı reddediyor. Genellikle kamera yeniden başlıyordur.
+    - `unreachable`: kamera ağda görünmüyor (Wi-Fi kopması, kapanma).
+    - `timeout`: kamera zamanında cevap vermedi.
+    - `auth`: giriş reddedildi.
+    - `error`: kameranın hata cevabı gibi diğer durumlar.
+  - `last_outage_seconds`: son kesintinin kaç saniye sürdüğü.
+  - `down_since`: şu an kesinti varsa başladığı zaman.
+- Sensörler kamera ulaşılamazken de görünür kalır, böylece kesinti anında da okunabilir.
+- `401` gibi kurtarılan hatalar kopma sayılmaz; yalnızca anahtarların "kullanılamıyor" olduğu kesintiler sayılır.
+
+**Kullanım:** Kopma zamanlarını alarm geçmişi, RTSP kaydı yapan sistemin log'u veya modemin log'u ile karşılaştırarak kameranın ne zaman ve neden koptuğunu görebilirsiniz.
+
 ### Yeniden başlatma
 - python-kasa'nın yeniden başlatma komutu kameralarda çalışmadığı için TP-Link kameralarda bu düğmeyi göstermez.
 - Bu entegrasyon Tapo Control'ün kameralar için kullandığı `rebootDevice` komutunu gönderir. Düğme TP-Link'in "Yeniden başlat" düğmesiyle aynı türde ve aynı "Tanılama" bölümündedir.
@@ -164,7 +173,6 @@ TP-Link entegrasyonundaki gibi:
 ### TP-Link'ten farkları
 - Alarm, alarm sesi/ışığı ve bildirim anahtarları ile kameralar için yeniden başlatma düğmesi. TP-Link'te bunlar yok.
 - Her sorguda tam güncelleme yerine yalnızca alarm ve bildirim ayarı okunur (1 istek; TP-Link'te genelde 2–3).
-- Anahtar değişiklikleri kuyruktan geçer, doğrulanır ve başarısız olursa tekrar denenir. TP-Link'te komut bir kez gönderilir, hata olursa ekranda gösterilir.
 - Oturum süre dolmadan yenilenir (varsayılan 8 dakika). TP-Link oturumun dolmasını bekler; o sorgu önce başarısız olur, log'a hata yazılır ve sorular yeniden sorulur.
 - Kamera hiç cevap vermediğinde sorular tek tek tekrar sorulmaz. TP-Link her soruyu tek tek tekrar dener, bu da ulaşılamayan bir kamerada sorguyu uzatır.
 - Sorgulama aralığı, oturum yenileme ve MAC ile arama seçenekten değiştirilebilir. TP-Link'te bu ayarlar sabittir; sorgulama ve arama varsayılanları TP-Link'inkilerle aynıdır.
@@ -182,7 +190,6 @@ TP-Link entegrasyonundaki gibi:
       not_from: unavailable
   ```
 - **Kamera zorlanıyor gibi:** Sorgulama aralığını 30 veya 60 saniyeye çıkarın. Bunun tek bedeli, kamerada yapılan değişikliklerin (örneğin Tapo uygulamasından) Home Assistant'ta daha geç görünmesidir.
-- **Anahtar istenen değeri gösteriyor ama `pending_write: true` kalıyor:** Yazma henüz kamera tarafından doğrulanmadı. Log'da `writing ... failed, will retry` uyarısı varsa kameraya o an ulaşılamıyordur; ulaşılınca yazılır. `does not keep ... giving up` hatası varsa kamera ayarı kabul edip uygulamamıştır.
 - **Ayrıntılı log:** `configuration.yaml` dosyasına ekleyip Home Assistant'ı yeniden başlatın:
   ```yaml
   logger:

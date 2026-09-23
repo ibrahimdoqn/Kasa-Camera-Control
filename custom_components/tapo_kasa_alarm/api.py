@@ -18,7 +18,6 @@ from kasa import (
     AuthenticationError,
     Credentials,
     Device,
-    DeviceError,
     DeviceConfig,
     DeviceConnectionParameters,
     DeviceEncryptionType,
@@ -26,12 +25,7 @@ from kasa import (
     Discover,
     KasaException,
 )
-from kasa.exceptions import (
-    SMART_AUTHENTICATION_ERRORS,
-    SMART_RETRYABLE_ERRORS,
-    SmartErrorCode,
-    _ConnectionError,
-)
+from kasa.exceptions import SmartErrorCode, _ConnectionError
 
 from .const import (
     ALARM_SECTION,
@@ -46,7 +40,6 @@ _LOGGER = logging.getLogger(__name__)
 
 __all__ = [
     "AuthenticationError",
-    "DeviceError",
     "KasaException",
     "TapoAlarmApi",
     "connect_device",
@@ -164,22 +157,38 @@ def _alarm_info(result: dict[str, Any]) -> dict[str, Any]:
     return info
 
 
-def is_permanent_error(err: Exception) -> bool:
-    """Return True if retrying the same write cannot help.
+def disconnect_reason(err: BaseException) -> str:
+    """Classify why a poll failed, for the diagnostic sensors.
 
-    The camera rejected the command with an error code (for example
-    PROTOCOL_FORMAT_ERROR or INVALID_ARGUMENTS), or the request itself is
-    invalid. Session expiry (401), timeouts, connection errors and the
-    error codes python-kasa itself retries are temporary.
+    reboot: the camera is on the network but refuses the connection
+            (ConnectionRefusedError, errno 111), typically while it restarts
+    unreachable: the camera is not on the network (e.g. errno 113, Wi-Fi drop)
+    timeout: the camera did not answer in time
+    auth: the login was rejected
+    error: anything else (e.g. an error answer from the camera)
     """
-    if isinstance(err, ValueError):
-        return True
-    return (
-        isinstance(err, DeviceError)
-        and not isinstance(err, AuthenticationError)
-        and err.error_code is not None
-        and err.error_code not in SMART_RETRYABLE_ERRORS
-    )
+    if isinstance(err, AuthenticationError):
+        return "auth"
+    seen: set[int] = set()
+    todo: list[Any] = [err]
+    connection = False
+    while todo:
+        item = todo.pop()
+        if not isinstance(item, BaseException) or id(item) in seen:
+            continue
+        seen.add(id(item))
+        if isinstance(item, ConnectionRefusedError):
+            return "reboot"
+        if isinstance(item, _ConnectionError):
+            connection = True
+        todo.extend(
+            [item.__cause__, item.__context__, getattr(item, "os_error", None), *item.args]
+        )
+    if connection:
+        return "unreachable"
+    if isinstance(err, TimeoutError):
+        return "timeout"
+    return "error"
 
 
 def _unwrap(resp: dict[str, Any], method: str) -> dict[str, Any]:
@@ -235,13 +244,8 @@ class TapoAlarmApi:
 
     async def _call(self, method: str, params: dict[str, Any]) -> None:
         resp = await self._query({method: params})
-        if isinstance(code := resp.get(method), SmartErrorCode):
-            # Keep the camera's error code so callers can tell a rejected
-            # command from a temporary failure.
-            msg = f"{method} failed: {code.name}"
-            if code in SMART_AUTHENTICATION_ERRORS:
-                raise AuthenticationError(msg, error_code=code)
-            raise DeviceError(msg, error_code=code)
+        if isinstance(resp.get(method), SmartErrorCode):
+            raise KasaException(f"{method} failed: {resp[method].name}")
 
     async def _query_with_recovery(self, request: dict[str, Any]) -> dict[str, Any]:
         """Query like python-kasa's device.update() does for the TP-Link integration.

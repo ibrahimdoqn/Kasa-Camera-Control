@@ -63,6 +63,35 @@
       "reboot": {
         "name": "Reboot"
       }
+    },
+    "sensor": {
+      "connected_since": {
+        "name": "Connected since"
+      },
+      "disconnects": {
+        "name": "Disconnects",
+        "state_attributes": {
+          "last_disconnect": {
+            "name": "Last disconnect"
+          },
+          "last_disconnect_reason": {
+            "name": "Last disconnect reason",
+            "state": {
+              "reboot": "Refused (camera restarting)",
+              "unreachable": "Unreachable",
+              "timeout": "Timeout",
+              "auth": "Login rejected",
+              "error": "Error"
+            }
+          },
+          "last_outage_seconds": {
+            "name": "Last outage (s)"
+          },
+          "down_since": {
+            "name": "Down since"
+          }
+        }
+      }
     }
   }
 }
