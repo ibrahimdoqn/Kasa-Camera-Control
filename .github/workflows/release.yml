@@ -24,6 +24,14 @@ jobs:
             echo "Release $tag already exists"
             exit 0
           fi
+          # A release that was deleted by hand can leave its tag behind on
+          # an older commit. Move it to this commit so the release gets the
+          # current code.
+          tag_sha=$(git ls-remote --tags origin "refs/tags/$tag" | cut -f1)
+          if [ -n "$tag_sha" ] && [ "$tag_sha" != "$GITHUB_SHA" ]; then
+            echo "Tag $tag points to $tag_sha, moving it to $GITHUB_SHA"
+            git push origin ":refs/tags/$tag"
+          fi
           gh release create "$tag" \
             --target "$GITHUB_SHA" \
             --title "$tag" \

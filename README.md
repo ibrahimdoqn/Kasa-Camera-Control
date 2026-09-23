@@ -150,7 +150,7 @@ TP-Link entegrasyonundaki gibi:
 Her kameranın cihaz sayfasındaki **Tanılama** bölümünde iki sensör vardır. Kameraya ek istek göndermezler; entegrasyonun zaten gördüğünü gösterirler.
 
 - **Bağlantı kuruldu:** Mevcut bağlantının kurulduğu an. Home Assistant bunu hem saat olarak hem de "x dakika önce" olarak gösterir; bu da bağlantının ne zamandır sürdüğüdür. Bağlantı koptuğunda "Bilinmiyor" olur, geri gelince yeni zamanı gösterir.
-- **Kopma sayısı:** Bağlantının kaç kez koptuğu. Art arda başarısız sorgular tek kopma sayılır. Sayı Home Assistant yeniden başlasa da korunur.
+- **Kopma sayısı:** Home Assistant başladığından beri bağlantının kaç kez koptuğu. Art arda başarısız sorgular tek kopma sayılır. Home Assistant yeniden başlatıldığında (veya entegrasyon yeniden yüklendiğinde) 0'dan başlar; son kopmanın ayrıntıları da sıfırlanır.
   - `last_disconnect`: son kopmanın zamanı.
   - `last_disconnect_reason`: son kopmanın sebebi:
     - `reboot`: kamera ağda ama bağlantıyı reddediyor. Genellikle kamera yeniden başlıyordur.

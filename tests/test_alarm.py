@@ -496,7 +496,9 @@ def test_disconnect_reasons() -> None:
     assert disconnect_reason(KasaException("401")) == "error"
 
 
-async def test_disconnect_count_survives_restart(hass: HomeAssistant) -> None:
+async def test_disconnect_count_starts_from_zero_after_restart(
+    hass: HomeAssistant,
+) -> None:
     from pytest_homeassistant_custom_component.common import (
         mock_restore_cache_with_extra_data,
     )
@@ -520,6 +522,6 @@ async def test_disconnect_count_survives_restart(hass: HomeAssistant) -> None:
     )
     await _setup(hass, fake_device())
     count = hass.states.get("sensor.bahce_disconnects")
-    assert count.state == "4"
-    assert count.attributes["last_disconnect_reason"] == "reboot"
-    assert count.attributes["last_outage_seconds"] == 60
+    assert count.state == "0"
+    assert count.attributes["last_disconnect_reason"] is None
+    assert count.attributes["last_outage_seconds"] is None
