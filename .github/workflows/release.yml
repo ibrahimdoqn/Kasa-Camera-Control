@@ -27,4 +27,4 @@ jobs:
           gh release create "$tag" \
             --target "$GITHUB_SHA" \
             --title "$tag" \
-            --notes "Tapo Kamera Alarm ${tag}. Kurulum için README'ye bakın."
+            --notes "Kasa Camera Control ${tag}. Kurulum için README'ye bakın."

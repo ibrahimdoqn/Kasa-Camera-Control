@@ -296,6 +296,14 @@ async def test_wrong_device_at_ip(hass: HomeAssistant) -> None:
     other.disconnect.assert_awaited()
 
 
+async def test_no_mac_does_not_block_setup(hass: HomeAssistant) -> None:
+    """A camera that reports no MAC is not mistaken for another device."""
+    dev = fake_device()
+    dev.mac = ""
+    entry, _ = await _setup(hass, dev)
+    assert entry.state is ConfigEntryState.LOADED
+
+
 async def test_discovery_moves_camera(hass: HomeAssistant, no_real_discovery) -> None:
     """Discovery at start / every 15 min follows the camera to a new IP."""
     from custom_components.tapo_kasa_alarm.discovery import async_discover_and_update

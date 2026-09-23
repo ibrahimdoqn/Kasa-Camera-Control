@@ -80,7 +80,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: TapoAlarmConfigEntry) ->
     except KasaException as err:
         raise ConfigEntryNotReady(str(err)) from err
 
-    if entry.unique_id and (found := format_mac(device.mac)) != entry.unique_id:
+    if (
+        entry.unique_id
+        and device.mac
+        and (found := format_mac(device.mac)) != entry.unique_id
+    ):
         # The DHCP lease probably moved and another device now has this IP.
         # Do not mix up cameras: wait for discovery to find ours.
         await device.disconnect()
