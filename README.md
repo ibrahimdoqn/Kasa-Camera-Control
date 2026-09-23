@@ -23,11 +23,9 @@ C520WS ve C510W için yazıldı. `msg_alarm` destekleyen diğer Tapo kameralarda
 | `switch.<kamera>_alarm_isigi` | Alarm çalınca ışık kullanılsın mı |
 | `switch.<kamera>_bildirimler` | Tapo uygulaması bildirimlerini açar/kapatır |
 | `switch.<kamera>_zengin_bildirimler` | Görüntülü (zengin) bildirimler |
-| `siren.<kamera>_siren` | Sireni hemen çalar/durdurur (manuel alarm) |
 
 Ses veya ışıktan en az biri açık kalmalıdır; kamera bunu zorunlu tutar.
 
-Siren için kameralar farklı komutlar kabul eder. Entegrasyon Tapo Control'deki sırayla `manual_msg_alarm`, `setSirenStatus` ve `testUsrDefAudio` komutlarını dener ve çalışanı hatırlar. Yeni C520WS yazılımı yalnızca sonuncusunu kabul eder: kameranın seçili alarm sesini çalar.
 
 Logo, Tapo Control entegrasyonunun logosudur. Logoyu Home Assistant 2026.3 ve sonrası `brand/` klasöründen gösterir.
 

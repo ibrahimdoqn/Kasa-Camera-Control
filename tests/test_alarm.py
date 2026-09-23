@@ -6,7 +6,8 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
-from kasa.exceptions import DeviceError, SmartErrorCode
+from homeassistant.helpers import entity_registry as er
+from kasa.exceptions import SmartErrorCode
 
 from custom_components.tapo_kasa_alarm.const import DOMAIN
 
@@ -22,7 +23,6 @@ class FakeProtocol:
             "alarm_mode": ["sound", "light"],
         }
         self.push = {"notification_enabled": "on", "rich_notification_enabled": "off"}
-        self.siren = "off"
         self.requests = []
 
     async def query(self, request):
@@ -31,9 +31,6 @@ class FakeProtocol:
         if method == "set":
             self.alarm = request[method]["msg_alarm"]["chn1_msg_alarm_info"]
             return {}
-        if method == "do":
-            # C5x0 firmware rejects the manual alarm "do" call.
-            raise DeviceError("UNSUPPORTED_METHOD")
         resp = {}
         for method, params in request.items():
             if method == "getLastAlarmInfo":
@@ -42,13 +39,6 @@ class FakeProtocol:
                 resp[method] = {"msg_push": {"chn1_msg_push_info": dict(self.push)}}
             elif method == "setMsgPushConfig":
                 self.push.update(params["msg_push"]["chn1_msg_push_info"])
-                resp[method] = {}
-            elif method == "setSirenStatus":
-                # Newer C520WS firmware rejects this too.
-                raise DeviceError("UNSUPPORTED_METHOD")
-            elif method == "testUsrDefAudio":
-                audio = params["msg_alarm"]["test_usr_def_audio"]
-                self.siren = "off" if audio.get("action") == "stop" else audio["id"]
                 resp[method] = {}
             else:
                 raise AssertionError(request)
@@ -74,6 +64,10 @@ async def test_setup_and_toggle(hass: HomeAssistant) -> None:
     dev = fake_device()
     entry = MockConfigEntry(domain=DOMAIN, data=DATA, unique_id="aa:bb:cc:dd:ee:ff")
     entry.add_to_hass(hass)
+    registry = er.async_get(hass)
+    old_siren = registry.async_get_or_create(
+        "siren", DOMAIN, "aa:bb:cc:dd:ee:ff_siren", config_entry=entry
+    )
     with patch(
         "custom_components.tapo_kasa_alarm.connect_device",
         AsyncMock(return_value=dev),
@@ -81,6 +75,7 @@ async def test_setup_and_toggle(hass: HomeAssistant) -> None:
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
     assert entry.state is ConfigEntryState.LOADED
+    assert registry.async_get(old_siren.entity_id) is None
 
     assert hass.states.get("switch.bahce_alarm").state == "off"
     assert hass.states.get("switch.bahce_alarm_sound").state == "on"
@@ -101,19 +96,6 @@ async def test_setup_and_toggle(hass: HomeAssistant) -> None:
         "enabled": "on",
         "alarm_mode": ["sound"],
     }
-
-    await hass.services.async_call(
-        "siren", "turn_on", {"entity_id": "siren.bahce_siren"}, blocking=True
-    )
-    assert dev.protocol.siren == "3"
-    assert hass.states.get("siren.bahce_siren").state == "on"
-    # The working variant is remembered, "do" is not retried.
-    before = len(dev.protocol.requests)
-    await hass.services.async_call(
-        "siren", "turn_off", {"entity_id": "siren.bahce_siren"}, blocking=True
-    )
-    assert dev.protocol.siren == "off"
-    assert len(dev.protocol.requests) == before + 1
 
     assert hass.states.get("switch.bahce_notifications").state == "on"
     assert hass.states.get("switch.bahce_rich_notifications").state == "off"

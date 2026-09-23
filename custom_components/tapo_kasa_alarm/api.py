@@ -8,7 +8,6 @@ request is serialized, so the camera never sees parallel logins.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable
 import logging
 from typing import Any
 
@@ -88,14 +87,6 @@ def _alarm_info(result: dict[str, Any]) -> dict[str, Any]:
     return info
 
 
-def _siren_id(alarm: dict[str, Any]) -> str | None:
-    """Alarm sound id, the same field Tapo Control uses as siren_type."""
-    for key in ("alarm_type", "siren_type"):
-        if alarm.get(key) not in (None, ""):
-            return str(alarm[key])
-    return None
-
-
 def _unwrap(resp: dict[str, Any], method: str) -> dict[str, Any]:
     result = resp.get(method)
     if isinstance(result, SmartErrorCode):
@@ -112,8 +103,6 @@ class TapoAlarmApi:
         self.device = device
         self._lock = asyncio.Lock()
         self._variant: str | None = None
-        self._siren_call: Callable[[bool], Awaitable[None]] | None = None
-        self._siren_id: str | None = None
 
     async def _query(self, request: dict[str, Any]) -> dict[str, Any]:
         async with self._lock:
@@ -211,49 +200,6 @@ class TapoAlarmApi:
             params["rich_notification_enabled"] = "on" if rich else "off"
         await self._call("setMsgPushConfig", {"msg_push": {PUSH_SECTION: params}})
         return params
-
-    async def manual_alarm(self, start: bool, alarm: dict[str, Any] | None = None) -> None:
-        """Start or stop the siren right now.
-
-        Cameras differ in which call they accept, so try the known variants
-        (same order as Tapo Control) and remember the one that worked.
-        Newer C520WS firmware only accepts playing the alarm sound through
-        testUsrDefAudio (Tapo Control fix #1347).
-        """
-        self._siren_id = _siren_id(alarm or {}) or self._siren_id
-        variants = [self._manual_alarm_do, self._siren_status, self._test_audio]
-        if self._siren_call is not None:
-            variants.remove(self._siren_call)
-            variants.insert(0, self._siren_call)
-        errors = []
-        for call in variants:
-            try:
-                await call(start)
-            except KasaException as err:
-                _LOGGER.debug("%s failed: %s", call.__name__, err)
-                errors.append(str(err))
-                continue
-            self._siren_call = call
-            return
-        raise KasaException("Camera does not support triggering the siren: " + "; ".join(errors))
-
-    async def _manual_alarm_do(self, start: bool) -> None:
-        await self._query(
-            {"do": {"msg_alarm": {"manual_msg_alarm": {
-                "action": "start" if start else "stop"
-            }}}}
-        )
-
-    async def _test_audio(self, start: bool) -> None:
-        params = (
-            {"force": "1", "id": self._siren_id or "0"} if start else {"action": "stop"}
-        )
-        await self._call("testUsrDefAudio", {"msg_alarm": {"test_usr_def_audio": params}})
-
-    async def _siren_status(self, start: bool) -> None:
-        await self._call(
-            "setSirenStatus", {"msg_alarm": {"status": "on" if start else "off"}}
-        )
 
     async def close(self) -> None:
         """Close the session."""

@@ -54,11 +54,6 @@
       "rich_notifications": {
         "name": "Rich notifications"
       }
-    },
-    "siren": {
-      "siren": {
-        "name": "Siren"
-      }
     }
   }
 }

@@ -6,11 +6,13 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
+from homeassistant.helpers import entity_registry as er
 
 from .api import AuthenticationError, KasaException, TapoAlarmApi, connect_device
+from .const import DOMAIN
 from .coordinator import TapoAlarmCoordinator
 
-PLATFORMS = [Platform.SIREN, Platform.SWITCH]
+PLATFORMS = [Platform.SWITCH]
 
 type TapoAlarmConfigEntry = ConfigEntry[TapoAlarmCoordinator]
 
@@ -35,6 +37,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: TapoAlarmConfigEntry) ->
         raise
 
     entry.runtime_data = coordinator
+    _remove_siren_entity(hass, entry)
     entry.async_on_unload(entry.add_update_listener(_async_reload))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
@@ -50,3 +53,11 @@ async def async_unload_entry(hass: HomeAssistant, entry: TapoAlarmConfigEntry) -
 
 async def _async_reload(hass: HomeAssistant, entry: TapoAlarmConfigEntry) -> None:
     await hass.config_entries.async_reload(entry.entry_id)
+
+
+def _remove_siren_entity(hass: HomeAssistant, entry: TapoAlarmConfigEntry) -> None:
+    """Drop the siren entity created by versions before 1.3.0."""
+    registry = er.async_get(hass)
+    uid = entry.unique_id or entry.entry_id
+    if entity_id := registry.async_get_entity_id("siren", DOMAIN, f"{uid}_siren"):
+        registry.async_remove(entity_id)
