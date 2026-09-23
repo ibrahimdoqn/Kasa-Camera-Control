@@ -344,6 +344,7 @@ async def test_options_flow(hass: HomeAssistant) -> None:
     assert entry.options == {"scan_interval": 30, "session_renew": 5, "discovery": False}
     assert entry.runtime_data.update_interval == timedelta(seconds=30)
     assert entry.runtime_data.api.session_renew_minutes == 5
+    assert isinstance(entry.options["session_renew"], int)
     assert entry.state is ConfigEntryState.LOADED
 
 

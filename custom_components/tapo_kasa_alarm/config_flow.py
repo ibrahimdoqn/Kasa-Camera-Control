@@ -19,6 +19,11 @@ from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.device_registry import format_mac
+from homeassistant.helpers.selector import (
+    NumberSelector,
+    NumberSelectorConfig,
+    NumberSelectorMode,
+)
 
 from .api import AuthenticationError, KasaException, connect_device
 from .const import (
@@ -182,7 +187,19 @@ class TapoAlarmOptionsFlow(OptionsFlow):
                         default=self.config_entry.options.get(
                             CONF_SESSION_RENEW, DEFAULT_SESSION_RENEW
                         ),
-                    ): vol.All(vol.Coerce(int), vol.Range(min=0, max=MAX_SESSION_RENEW)),
+                    ): vol.All(
+                        # A box like the polling interval (min + max would
+                        # otherwise be shown as a slider).
+                        NumberSelector(
+                            NumberSelectorConfig(
+                                min=0,
+                                max=MAX_SESSION_RENEW,
+                                step=1,
+                                mode=NumberSelectorMode.BOX,
+                            )
+                        ),
+                        vol.Coerce(int),
+                    ),
                     vol.Required(
                         CONF_DISCOVERY,
                         default=self.config_entry.options.get(
