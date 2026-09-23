@@ -68,6 +68,9 @@ async def test_setup_and_toggle(hass: HomeAssistant) -> None:
     old_siren = registry.async_get_or_create(
         "siren", DOMAIN, "aa:bb:cc:dd:ee:ff_siren", config_entry=entry
     )
+    old_rich = registry.async_get_or_create(
+        "switch", DOMAIN, "aa:bb:cc:dd:ee:ff_rich_notifications", config_entry=entry
+    )
     with patch(
         "custom_components.tapo_kasa_alarm.connect_device",
         AsyncMock(return_value=dev),
@@ -76,6 +79,7 @@ async def test_setup_and_toggle(hass: HomeAssistant) -> None:
         await hass.async_block_till_done()
     assert entry.state is ConfigEntryState.LOADED
     assert registry.async_get(old_siren.entity_id) is None
+    assert registry.async_get(old_rich.entity_id) is None
 
     assert hass.states.get("switch.bahce_alarm").state == "off"
     assert hass.states.get("switch.bahce_alarm_sound").state == "on"
@@ -98,7 +102,7 @@ async def test_setup_and_toggle(hass: HomeAssistant) -> None:
     }
 
     assert hass.states.get("switch.bahce_notifications").state == "on"
-    assert hass.states.get("switch.bahce_rich_notifications").state == "off"
+    assert hass.states.get("switch.bahce_rich_notifications") is None
     await hass.services.async_call(
         "switch", "turn_off", {"entity_id": "switch.bahce_notifications"}, blocking=True
     )

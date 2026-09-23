@@ -50,10 +50,10 @@ class TapoAlarmCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             raise HomeAssistantError(f"Could not set alarm: {err}") from err
         self.async_set_updated_data({**self.data, "alarm": new})
 
-    async def async_set_notifications(self, **changes: bool) -> None:
-        """Write notification settings and publish the new state immediately."""
+    async def async_set_notifications(self, enabled: bool) -> None:
+        """Write notification setting and publish the new state immediately."""
         try:
-            new = await self.api.set_notifications(**changes)
+            new = await self.api.set_notifications(enabled)
         except KasaException as err:
             raise HomeAssistantError(f"Could not set notifications: {err}") from err
         self.async_set_updated_data(

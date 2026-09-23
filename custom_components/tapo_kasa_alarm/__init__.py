@@ -37,7 +37,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: TapoAlarmConfigEntry) ->
         raise
 
     entry.runtime_data = coordinator
-    _remove_siren_entity(hass, entry)
+    _remove_old_entities(hass, entry)
     entry.async_on_unload(entry.add_update_listener(_async_reload))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
@@ -55,9 +55,10 @@ async def _async_reload(hass: HomeAssistant, entry: TapoAlarmConfigEntry) -> Non
     await hass.config_entries.async_reload(entry.entry_id)
 
 
-def _remove_siren_entity(hass: HomeAssistant, entry: TapoAlarmConfigEntry) -> None:
-    """Drop the siren entity created by versions before 1.3.0."""
+def _remove_old_entities(hass: HomeAssistant, entry: TapoAlarmConfigEntry) -> None:
+    """Drop entities that older versions created and are no longer provided."""
     registry = er.async_get(hass)
     uid = entry.unique_id or entry.entry_id
-    if entity_id := registry.async_get_entity_id("siren", DOMAIN, f"{uid}_siren"):
-        registry.async_remove(entity_id)
+    for platform, key in (("siren", "siren"), ("switch", "rich_notifications")):
+        if entity_id := registry.async_get_entity_id(platform, DOMAIN, f"{uid}_{key}"):
+            registry.async_remove(entity_id)

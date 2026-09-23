@@ -50,9 +50,6 @@
       },
       "notifications": {
         "name": "Bildirimler"
-      },
-      "rich_notifications": {
-        "name": "Zengin bildirimler"
       }
     }
   }

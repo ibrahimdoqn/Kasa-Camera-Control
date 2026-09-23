@@ -189,15 +189,9 @@ class TapoAlarmApi:
             await self._query({"set": {"msg_alarm": {ALARM_SECTION: new}}})
         return {**current, **new}
 
-    async def set_notifications(
-        self, *, enabled: bool | None = None, rich: bool | None = None
-    ) -> dict[str, str]:
-        """Turn app push notifications (and rich notifications) on/off."""
-        params: dict[str, str] = {}
-        if enabled is not None:
-            params["notification_enabled"] = "on" if enabled else "off"
-        if rich is not None:
-            params["rich_notification_enabled"] = "on" if rich else "off"
+    async def set_notifications(self, enabled: bool) -> dict[str, str]:
+        """Turn app push notifications on/off."""
+        params = {"notification_enabled": "on" if enabled else "off"}
         await self._call("setMsgPushConfig", {"msg_push": {PUSH_SECTION: params}})
         return params
 

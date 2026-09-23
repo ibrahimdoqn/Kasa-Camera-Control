@@ -29,9 +29,7 @@ async def async_setup_entry(
     ]
     push = coordinator.data.get("push") or {}
     if "notification_enabled" in push:
-        entities.append(NotificationSwitch(coordinator, "notifications", "enabled"))
-    if "rich_notification_enabled" in push:
-        entities.append(NotificationSwitch(coordinator, "rich_notifications", "rich"))
+        entities.append(NotificationSwitch(coordinator))
     async_add_entities(entities)
 
 
@@ -82,15 +80,10 @@ class AlarmModeSwitch(TapoAlarmEntity, SwitchEntity):
 class NotificationSwitch(TapoAlarmEntity, SwitchEntity):
     """Tapo app push notifications on/off."""
 
-    _PUSH_KEYS = {"enabled": "notification_enabled", "rich": "rich_notification_enabled"}
+    _attr_icon = "mdi:bell-ring"
 
-    def __init__(self, coordinator: TapoAlarmCoordinator, key: str, arg: str) -> None:
-        super().__init__(coordinator, key)
-        self._arg = arg
-        self._push_key = self._PUSH_KEYS[arg]
-        self._attr_icon = "mdi:bell-ring" if arg == "enabled" else "mdi:message-image"
-        if arg == "rich":
-            self._attr_entity_category = EntityCategory.CONFIG
+    def __init__(self, coordinator: TapoAlarmCoordinator) -> None:
+        super().__init__(coordinator, "notifications")
 
     @property
     def available(self) -> bool:
@@ -98,10 +91,10 @@ class NotificationSwitch(TapoAlarmEntity, SwitchEntity):
 
     @property
     def is_on(self) -> bool:
-        return (self.coordinator.data.get("push") or {}).get(self._push_key) == "on"
+        return (self.coordinator.data.get("push") or {}).get("notification_enabled") == "on"
 
     async def async_turn_on(self, **kwargs: Any) -> None:
-        await self.coordinator.async_set_notifications(**{self._arg: True})
+        await self.coordinator.async_set_notifications(True)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
-        await self.coordinator.async_set_notifications(**{self._arg: False})
+        await self.coordinator.async_set_notifications(False)

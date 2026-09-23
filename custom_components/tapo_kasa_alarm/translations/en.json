@@ -50,9 +50,6 @@
       },
       "notifications": {
         "name": "Notifications"
-      },
-      "rich_notifications": {
-        "name": "Rich notifications"
       }
     }
   }

@@ -22,7 +22,6 @@ C520WS ve C510W için yazıldı. `msg_alarm` destekleyen diğer Tapo kameralarda
 | `switch.<kamera>_alarm_sesi` | Alarm çalınca ses kullanılsın mı |
 | `switch.<kamera>_alarm_isigi` | Alarm çalınca ışık kullanılsın mı |
 | `switch.<kamera>_bildirimler` | Tapo uygulaması bildirimlerini açar/kapatır |
-| `switch.<kamera>_zengin_bildirimler` | Görüntülü (zengin) bildirimler |
 
 Ses veya ışıktan en az biri açık kalmalıdır; kamera bunu zorunlu tutar.
 
