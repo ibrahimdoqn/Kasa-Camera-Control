@@ -17,7 +17,7 @@ class FakeProtocol:
     def __init__(self):
         self.alarm = {
             "enabled": "off",
-            "alarm_type": "0",
+            "alarm_type": "3",
             "light_type": "0",
             "alarm_mode": ["sound", "light"],
         }
@@ -44,7 +44,11 @@ class FakeProtocol:
                 self.push.update(params["msg_push"]["chn1_msg_push_info"])
                 resp[method] = {}
             elif method == "setSirenStatus":
-                self.siren = params["msg_alarm"]["status"]
+                # Newer C520WS firmware rejects this too.
+                raise DeviceError("UNSUPPORTED_METHOD")
+            elif method == "testUsrDefAudio":
+                audio = params["msg_alarm"]["test_usr_def_audio"]
+                self.siren = "off" if audio.get("action") == "stop" else audio["id"]
                 resp[method] = {}
             else:
                 raise AssertionError(request)
@@ -92,7 +96,7 @@ async def test_setup_and_toggle(hass: HomeAssistant) -> None:
         "switch", "turn_off", {"entity_id": "switch.bahce_alarm_light"}, blocking=True
     )
     assert dev.protocol.alarm == {
-        "alarm_type": "0",
+        "alarm_type": "3",
         "light_type": "0",
         "enabled": "on",
         "alarm_mode": ["sound"],
@@ -101,7 +105,7 @@ async def test_setup_and_toggle(hass: HomeAssistant) -> None:
     await hass.services.async_call(
         "siren", "turn_on", {"entity_id": "siren.bahce_siren"}, blocking=True
     )
-    assert dev.protocol.siren == "on"
+    assert dev.protocol.siren == "3"
     assert hass.states.get("siren.bahce_siren").state == "on"
     # The working variant is remembered, "do" is not retried.
     before = len(dev.protocol.requests)

@@ -36,7 +36,9 @@ class ManualSiren(TapoAlarmEntity, SirenEntity):
 
     async def _set(self, start: bool) -> None:
         try:
-            await self.coordinator.api.manual_alarm(start)
+            await self.coordinator.api.manual_alarm(
+                start, (self.coordinator.data or {}).get("alarm")
+            )
         except KasaException as err:
             raise HomeAssistantError(f"Could not control siren: {err}") from err
         self._attr_is_on = start
