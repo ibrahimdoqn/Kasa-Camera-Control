@@ -33,4 +33,5 @@ class RebootButton(TapoAlarmEntity, ButtonEntity):
         super().__init__(coordinator, "reboot")
 
     async def async_press(self) -> None:
+        self.debug_command("reboot")
         await self.coordinator.async_reboot()

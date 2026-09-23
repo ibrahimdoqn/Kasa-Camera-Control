@@ -33,3 +33,17 @@ class TapoAlarmEntity(CoordinatorEntity[TapoAlarmCoordinator]):
             sw_version=device.hw_info.get("sw_ver"),
             hw_version=device.hw_info.get("hw_ver"),
         )
+
+    def debug_command(self, action: str) -> None:
+        """Debug mode: log a switch/button action and who asked for it."""
+        if not self.coordinator.api.debug:
+            return
+        context = self._context
+        self.coordinator.api.dbg(
+            "%s: %s requested (user_id=%s, parent_id=%s, context_id=%s)",
+            self.entity_id,
+            action,
+            context.user_id if context else None,
+            context.parent_id if context else None,
+            context.id if context else None,
+        )

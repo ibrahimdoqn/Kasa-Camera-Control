@@ -18,7 +18,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import format_mac
 
 from .api import discover_macs
-from .const import CONF_DISCOVERY, DEFAULT_DISCOVERY, DOMAIN
+from .const import CONF_DISCOVERY, DEBUG_LOGGER_NAME, DEFAULT_DISCOVERY, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -44,6 +44,10 @@ async def async_discover_and_update(hass: HomeAssistant) -> None:
     found = {
         format_mac(mac): host for mac, host in (await discover_macs(addresses)).items()
     }
+    if logging.getLogger(DEBUG_LOGGER_NAME).isEnabledFor(logging.DEBUG):
+        logging.getLogger(DEBUG_LOGGER_NAME).debug(
+            "discovery on %s found %s", addresses, found
+        )
     for entry in entries:
         new_host = found.get(entry.unique_id)
         if not new_host or new_host == entry.data[CONF_HOST]:

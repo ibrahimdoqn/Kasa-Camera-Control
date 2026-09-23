@@ -170,7 +170,8 @@ class TapoAlarmOptionsFlow(OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         if user_input is not None:
-            return self.async_create_entry(data=user_input)
+            # Keep options set elsewhere (the debug mode switch).
+            return self.async_create_entry(data={**self.config_entry.options, **user_input})
 
         return self.async_show_form(
             step_id="init",
