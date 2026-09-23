@@ -47,6 +47,12 @@
       },
       "alarm_light": {
         "name": "Alarm light"
+      },
+      "notifications": {
+        "name": "Notifications"
+      },
+      "rich_notifications": {
+        "name": "Rich notifications"
       }
     },
     "siren": {

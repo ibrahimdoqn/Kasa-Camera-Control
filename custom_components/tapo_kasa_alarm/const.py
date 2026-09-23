@@ -1,4 +1,4 @@
-"""Constants for the Tapo Kamera Alarm integration."""
+"""Constants for the Kasa Camera Control integration."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ MIN_SCAN_INTERVAL = 15
 DEFAULT_TIMEOUT = 10
 
 ALARM_SECTION = "chn1_msg_alarm_info"
+PUSH_SECTION = "chn1_msg_push_info"
 MODE_SOUND = "sound"
 MODE_LIGHT = "light"
 

@@ -1,4 +1,4 @@
-"""Config flow for Tapo Kamera Alarm."""
+"""Config flow for Kasa Camera Control."""
 
 from __future__ import annotations
 

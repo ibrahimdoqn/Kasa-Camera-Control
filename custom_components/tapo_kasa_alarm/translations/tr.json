@@ -47,6 +47,12 @@
       },
       "alarm_light": {
         "name": "Alarm ışığı"
+      },
+      "notifications": {
+        "name": "Bildirimler"
+      },
+      "rich_notifications": {
+        "name": "Zengin bildirimler"
       }
     },
     "siren": {

@@ -6,6 +6,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
+from kasa.exceptions import DeviceError
 
 from custom_components.tapo_kasa_alarm.const import DOMAIN
 
@@ -20,19 +21,34 @@ class FakeProtocol:
             "light_type": "0",
             "alarm_mode": ["sound", "light"],
         }
+        self.push = {"notification_enabled": "on", "rich_notification_enabled": "off"}
+        self.siren = "off"
         self.requests = []
 
     async def query(self, request):
         self.requests.append(request)
         method = next(iter(request))
-        if method == "getLastAlarmInfo":
-            return {method: {"msg_alarm": {"chn1_msg_alarm_info": dict(self.alarm)}}}
         if method == "set":
             self.alarm = request[method]["msg_alarm"]["chn1_msg_alarm_info"]
             return {}
         if method == "do":
-            return {"do": {}}
-        raise AssertionError(request)
+            # C5x0 firmware rejects the manual alarm "do" call.
+            raise DeviceError("UNSUPPORTED_METHOD")
+        resp = {}
+        for method, params in request.items():
+            if method == "getLastAlarmInfo":
+                resp[method] = {"msg_alarm": {"chn1_msg_alarm_info": dict(self.alarm)}}
+            elif method == "getMsgPushConfig":
+                resp[method] = {"msg_push": {"chn1_msg_push_info": dict(self.push)}}
+            elif method == "setMsgPushConfig":
+                self.push.update(params["msg_push"]["chn1_msg_push_info"])
+                resp[method] = {}
+            elif method == "setSirenStatus":
+                self.siren = params["msg_alarm"]["status"]
+                resp[method] = {}
+            else:
+                raise AssertionError(request)
+        return resp
 
     async def close(self):
         pass
@@ -85,9 +101,23 @@ async def test_setup_and_toggle(hass: HomeAssistant) -> None:
     await hass.services.async_call(
         "siren", "turn_on", {"entity_id": "siren.bahce_siren"}, blocking=True
     )
-    assert dev.protocol.requests[-1] == {
-        "do": {"msg_alarm": {"manual_msg_alarm": {"action": "start"}}}
-    }
+    assert dev.protocol.siren == "on"
+    assert hass.states.get("siren.bahce_siren").state == "on"
+    # The working variant is remembered, "do" is not retried.
+    before = len(dev.protocol.requests)
+    await hass.services.async_call(
+        "siren", "turn_off", {"entity_id": "siren.bahce_siren"}, blocking=True
+    )
+    assert dev.protocol.siren == "off"
+    assert len(dev.protocol.requests) == before + 1
+
+    assert hass.states.get("switch.bahce_notifications").state == "on"
+    assert hass.states.get("switch.bahce_rich_notifications").state == "off"
+    await hass.services.async_call(
+        "switch", "turn_off", {"entity_id": "switch.bahce_notifications"}, blocking=True
+    )
+    assert dev.protocol.push["notification_enabled"] == "off"
+    assert hass.states.get("switch.bahce_notifications").state == "off"
 
     assert await hass.config_entries.async_unload(entry.entry_id)
     dev.disconnect.assert_awaited()

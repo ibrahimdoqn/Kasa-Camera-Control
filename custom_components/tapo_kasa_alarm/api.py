@@ -8,6 +8,7 @@ request is serialized, so the camera never sees parallel logins.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable, Callable
 import logging
 from typing import Any
 
@@ -24,7 +25,7 @@ from kasa import (
 )
 from kasa.exceptions import SmartErrorCode
 
-from .const import ALARM_SECTION, DEFAULT_TIMEOUT, MODE_LIGHT, MODE_SOUND
+from .const import ALARM_SECTION, DEFAULT_TIMEOUT, MODE_LIGHT, MODE_SOUND, PUSH_SECTION
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -60,6 +61,11 @@ async def connect_device(host: str, username: str, password: str) -> Device:
     return device
 
 
+def _section(result: dict[str, Any], module: str, section: str) -> dict[str, Any] | None:
+    info = result.get(module, result).get(section)
+    return info if isinstance(info, dict) else None
+
+
 def _unwrap(resp: dict[str, Any], method: str) -> dict[str, Any]:
     result = resp.get(method)
     if isinstance(result, SmartErrorCode):
@@ -75,22 +81,29 @@ class TapoAlarmApi:
     def __init__(self, device: Device) -> None:
         self.device = device
         self._lock = asyncio.Lock()
+        self._siren_call: Callable[[bool], Awaitable[None]] | None = None
 
     async def _query(self, request: dict[str, Any]) -> dict[str, Any]:
         async with self._lock:
             return await self.device.protocol.query(request)
 
-    async def get_alarm(self) -> dict[str, Any]:
-        """Return the msg_alarm config (enabled, alarm_mode, ...)."""
-        method = "getLastAlarmInfo"
+    async def get_state(self) -> dict[str, Any]:
+        """Read alarm and notification config in one multipleRequest."""
         resp = await self._query(
-            {method: {"msg_alarm": {"name": [ALARM_SECTION]}}}
+            {
+                "getLastAlarmInfo": {"msg_alarm": {"name": [ALARM_SECTION]}},
+                "getMsgPushConfig": {"msg_push": {"name": [PUSH_SECTION]}},
+            }
         )
-        result = _unwrap(resp, method)
-        info = result.get("msg_alarm", result).get(ALARM_SECTION)
-        if not isinstance(info, dict):
+        alarm = _section(_unwrap(resp, "getLastAlarmInfo"), "msg_alarm", ALARM_SECTION)
+        if alarm is None:
             raise KasaException(f"Unexpected alarm response: {resp}")
-        return info
+        try:
+            push = _section(_unwrap(resp, "getMsgPushConfig"), "msg_push", PUSH_SECTION)
+        except KasaException as err:
+            _LOGGER.debug("Notification config not available: %s", err)
+            push = None
+        return {"alarm": alarm, "push": push}
 
     async def set_alarm(
         self, current: dict[str, Any], *, enabled: bool | None = None,
@@ -118,13 +131,57 @@ class TapoAlarmApi:
         await self._query({"set": {"msg_alarm": {ALARM_SECTION: new}}})
         return {**current, **new}
 
+    async def set_notifications(
+        self, *, enabled: bool | None = None, rich: bool | None = None
+    ) -> dict[str, str]:
+        """Turn app push notifications (and rich notifications) on/off."""
+        params: dict[str, str] = {}
+        if enabled is not None:
+            params["notification_enabled"] = "on" if enabled else "off"
+        if rich is not None:
+            params["rich_notification_enabled"] = "on" if rich else "off"
+        method = "setMsgPushConfig"
+        resp = await self._query({method: {"msg_push": {PUSH_SECTION: params}}})
+        if isinstance(resp.get(method), SmartErrorCode):
+            raise KasaException(f"{method} failed: {resp[method].name}")
+        return params
+
     async def manual_alarm(self, start: bool) -> None:
-        """Start or stop the siren right now."""
+        """Start or stop the siren right now.
+
+        Cameras differ in which call they accept, so try the known variants
+        (same order as Tapo Control) and remember the one that worked.
+        """
+        variants = [self._manual_alarm_do, self._siren_status]
+        if self._siren_call is not None:
+            variants.remove(self._siren_call)
+            variants.insert(0, self._siren_call)
+        errors = []
+        for call in variants:
+            try:
+                await call(start)
+            except KasaException as err:
+                _LOGGER.debug("%s failed: %s", call.__name__, err)
+                errors.append(str(err))
+                continue
+            self._siren_call = call
+            return
+        raise KasaException("Camera does not support triggering the siren: " + "; ".join(errors))
+
+    async def _manual_alarm_do(self, start: bool) -> None:
         await self._query(
             {"do": {"msg_alarm": {"manual_msg_alarm": {
                 "action": "start" if start else "stop"
             }}}}
         )
+
+    async def _siren_status(self, start: bool) -> None:
+        method = "setSirenStatus"
+        resp = await self._query(
+            {method: {"msg_alarm": {"status": "on" if start else "off"}}}
+        )
+        if isinstance(resp.get(method), SmartErrorCode):
+            raise KasaException(f"{method} failed: {resp[method].name}")
 
     async def close(self) -> None:
         """Close the session."""

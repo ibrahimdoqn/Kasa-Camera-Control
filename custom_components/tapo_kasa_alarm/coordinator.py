@@ -1,4 +1,4 @@
-"""Polling coordinator for the camera alarm state."""
+"""Polling coordinator for the camera alarm and notification state."""
 
 from __future__ import annotations
 
@@ -17,7 +17,10 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class TapoAlarmCoordinator(DataUpdateCoordinator[dict[str, Any]]):
-    """Poll only the alarm config, one light request per interval."""
+    """Poll alarm + notification config, one light request per interval.
+
+    data = {"alarm": {...}, "push": {...} | None}
+    """
 
     config_entry: ConfigEntry
 
@@ -33,7 +36,7 @@ class TapoAlarmCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _async_update_data(self) -> dict[str, Any]:
         try:
-            return await self.api.get_alarm()
+            return await self.api.get_state()
         except AuthenticationError as err:
             raise ConfigEntryAuthFailed(str(err)) from err
         except KasaException as err:
@@ -42,7 +45,17 @@ class TapoAlarmCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def async_set_alarm(self, **changes: bool) -> None:
         """Write alarm settings and publish the new state immediately."""
         try:
-            new = await self.api.set_alarm(self.data or {}, **changes)
+            new = await self.api.set_alarm(self.data["alarm"], **changes)
         except (KasaException, ValueError) as err:
             raise HomeAssistantError(f"Could not set alarm: {err}") from err
-        self.async_set_updated_data(new)
+        self.async_set_updated_data({**self.data, "alarm": new})
+
+    async def async_set_notifications(self, **changes: bool) -> None:
+        """Write notification settings and publish the new state immediately."""
+        try:
+            new = await self.api.set_notifications(**changes)
+        except KasaException as err:
+            raise HomeAssistantError(f"Could not set notifications: {err}") from err
+        self.async_set_updated_data(
+            {**self.data, "push": {**(self.data.get("push") or {}), **new}}
+        )

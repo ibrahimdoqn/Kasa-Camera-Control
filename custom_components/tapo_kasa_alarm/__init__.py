@@ -1,4 +1,4 @@
-"""Tapo camera alarm control via python-kasa (the TP-Link integration library)."""
+"""Kasa Camera Control: Tapo camera alarm control via python-kasa."""
 
 from __future__ import annotations
 
