@@ -9,5 +9,5 @@
   "issue_tracker": "https://github.com/ibrahimdoqn/TapoKamera/issues",
   "loggers": ["kasa"],
   "requirements": ["python-kasa>=0.10.0"],
-  "version": "1.0.0"
+  "version": "1.0.1"
 }

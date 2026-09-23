@@ -113,10 +113,9 @@ class TapoAlarmApi:
             "enabled": "on" if is_on else "off",
             "alarm_mode": modes,
         }
-        method = "setAlarmConfig"
-        resp = await self._query({method: {"msg_alarm": {ALARM_SECTION: new}}})
-        if isinstance(resp.get(method), SmartErrorCode):
-            raise KasaException(f"{method} failed: {resp[method].name}")
+        # Same raw request pytapo sends for cameras; setAlarmConfig is only
+        # accepted by hub child devices and fails with PROTOCOL_FORMAT_ERROR.
+        await self._query({"set": {"msg_alarm": {ALARM_SECTION: new}}})
         return {**current, **new}
 
     async def manual_alarm(self, start: bool) -> None:

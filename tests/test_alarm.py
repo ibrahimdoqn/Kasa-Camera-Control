@@ -27,9 +27,9 @@ class FakeProtocol:
         method = next(iter(request))
         if method == "getLastAlarmInfo":
             return {method: {"msg_alarm": {"chn1_msg_alarm_info": dict(self.alarm)}}}
-        if method == "setAlarmConfig":
+        if method == "set":
             self.alarm = request[method]["msg_alarm"]["chn1_msg_alarm_info"]
-            return {method: {}}
+            return {}
         if method == "do":
             return {"do": {}}
         raise AssertionError(request)
