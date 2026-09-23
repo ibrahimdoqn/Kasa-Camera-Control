@@ -10,6 +10,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import TapoAlarmConfigEntry
+from .api import alarm_modes
 from .const import MODE_LIGHT, MODE_SOUND
 from .coordinator import TapoAlarmCoordinator
 from .entity import TapoAlarmEntity
@@ -64,7 +65,7 @@ class AlarmModeSwitch(TapoAlarmEntity, SwitchEntity):
 
     @property
     def is_on(self) -> bool:
-        modes = self.coordinator.data["alarm"].get("alarm_mode") or []
+        modes = alarm_modes(self.coordinator.data["alarm"])
         # Some firmwares call the sound mode "siren".
         if self._mode == MODE_SOUND:
             return MODE_SOUND in modes or "siren" in modes

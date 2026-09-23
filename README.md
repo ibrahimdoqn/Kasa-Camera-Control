@@ -8,7 +8,7 @@ Tapo kameraların **otomatik alarm** ve **bildirim** ayarlarını Home Assistant
 - Kameraya resmi TP-Link entegrasyonunun bağlandığı gibi bağlanır. Her sorguda yalnızca alarm ve bildirim ayarını, tek bir istekle okur.
 - Resmi entegrasyonda olmayan otomatik alarm ve bildirim anahtarlarını ekler.
 
-C520WS ve C510W için yazıldı. `msg_alarm` destekleyen diğer Tapo kameralarda da çalışmalı.
+C520WS ve C510W için yazıldı. `getAlertConfig` / `setAlertConfig` destekleyen diğer Tapo kameralarda da çalışmalı.
 
 Tamamen **yerel** çalışır: kameralarla ev ağı içinden konuşur, TP-Link bulutuna istek göndermez. Ayrıntılar için [Yerel çalışma](#yerel-çalışma) bölümüne bakın.
 
@@ -130,9 +130,12 @@ Entegrasyon, Home Assistant'ın resmi TP-Link entegrasyonunun kodu örnek alına
 ### Yeniden başlatma düğmesine basınca
 - Yeniden başlatmadan sonra sorgu yapılmaz. Kamera bir süre "kullanılamıyor" görünür ve açılınca kendiliğinden geri gelir.
 
-### Alarm ayarını okuma
-- Kamera modeline ve yazılımına göre alarm ayarı farklı komutlarla okunur (`getLastAlarmInfo`, `getAlertConfig`, `getAlarmConfig`).
-- Hangisinin desteklendiği bilinmiyorsa bu üç komut sırayla denenir. Çalışan komut hatırlanır, sonraki sorgular yalnızca onu kullanır.
+### Alarm ayarını okuma ve yazma
+- Alarm ayarı yalnızca `getAlertConfig` ile okunur ve `setAlertConfig` ile yazılır. Bu, kameranın güncel alarm komutudur.
+- Yazarken kameradan okunan ayarın tamamı (ses seviyesi, süre, ışık türü vb.) geri gönderilir; yalnızca değiştirilen alan değişir.
+- Ses ve ışık anahtarları, kamera bildiriyorsa `sound_alarm_enabled` / `light_alarm_enabled` alanlarını okur.
+- **1.6.5'te kaldırılan eski yöntemler:** `getLastAlarmInfo` + ham `set` ve `getAlarmConfig` / `setAlarmConfig` (pytapo ve Tapo Control'ün kullandığı yöntemler). Alarm bu eski yöntemle yazılırken kameranın servislerini yeniden başlattığı (RTSP'nin koptuğu) görüldü; `setAlertConfig` kullanan kamerada bu görülmedi.
+- `getAlertConfig`'i desteklemeyen bir kamera yüklenmez. Log'a "does not answer getAlertConfig" hatası yazılır ve Home Assistant kurulumu tekrar tekrar dener.
 
 ### Hata olursa
 TP-Link entegrasyonundaki gibi:

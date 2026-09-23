@@ -130,16 +130,16 @@ async def discover_macs(broadcast_addresses: list[str]) -> dict[str, str]:
     return found
 
 
-# The calls Tapo Control uses to read the alarm config, tried in this order.
-# variant -> (getter method, params)
-ALARM_VARIANTS: dict[str, tuple[str, dict[str, Any]]] = {
-    "last": ("getLastAlarmInfo", {"msg_alarm": {"name": [ALARM_SECTION]}}),
-    "alert": (
-        "getAlertConfig",
-        {"msg_alarm": {"name": [ALARM_SECTION], "table": ["usr_def_audio"]}},
-    ),
-    "config": ("getAlarmConfig", {"msg_alarm": {}}),
-}
+# The alarm config is read and written with getAlertConfig / setAlertConfig,
+# the current camera API. The older getLastAlarmInfo + raw "set" and
+# getAlarmConfig / setAlarmConfig calls (used by pytapo / Tapo Control) are
+# not used: writing the alarm that way was seen together with the camera
+# restarting its services (RTSP dropped), while the camera already using
+# setAlertConfig did not show this.
+ALARM_READ = (
+    "getAlertConfig",
+    {"msg_alarm": {"name": [ALARM_SECTION], "table": ["usr_def_audio"]}},
+)
 
 
 def _section(result: dict[str, Any], module: str, section: str) -> dict[str, Any] | None:
@@ -149,12 +149,27 @@ def _section(result: dict[str, Any], module: str, section: str) -> dict[str, Any
 
 def _alarm_info(result: dict[str, Any]) -> dict[str, Any]:
     info = _section(result, "msg_alarm", ALARM_SECTION)
-    if info is None:
-        # getAlarmConfig returns the fields without a section.
-        info = result.get("msg_alarm", result)
-    if not isinstance(info, dict) or "enabled" not in info:
+    if info is None or "enabled" not in info:
         raise KasaException(f"Unexpected alarm response: {result}")
     return info
+
+
+def alarm_modes(alarm: dict[str, Any]) -> list[str]:
+    """Sound/light modes of the alarm config.
+
+    getAlertConfig reports both alarm_mode and sound/light_alarm_enabled;
+    the enabled flags win when present.
+    """
+    modes = list(alarm.get("alarm_mode") or [])
+    for mode, flag in ((MODE_SOUND, "sound_alarm_enabled"), (MODE_LIGHT, "light_alarm_enabled")):
+        if flag not in alarm:
+            continue
+        present = mode in modes or (mode == MODE_SOUND and "siren" in modes)
+        if alarm[flag] == "on" and not present:
+            modes.append(mode)
+        elif alarm[flag] == "off" and present:
+            modes = [m for m in modes if m != mode and not (mode == MODE_SOUND and m == "siren")]
+    return modes
 
 
 def disconnect_reason(err: BaseException) -> str:
@@ -206,7 +221,6 @@ class TapoAlarmApi:
     def __init__(self, device: Device, session_renew_minutes: float = 0) -> None:
         self.device = device
         self._lock = asyncio.Lock()
-        self._variant: str | None = None
         # The device was just connected, so a fresh session exists.
         self._session_started = time.monotonic()
         self.session_renew_minutes = session_renew_minutes
@@ -285,45 +299,39 @@ class TapoAlarmApi:
         return responses
 
     async def get_state(self) -> dict[str, Any]:
-        """Read alarm and notification config in one multipleRequest.
-
-        Cameras expose the alarm config through different calls depending on
-        model and firmware. The first one that answers is remembered for
-        later polls and writes.
-        """
-        variants = [self._variant] if self._variant else list(ALARM_VARIANTS)
-        errors = []
-        for variant in variants:
-            method, params = ALARM_VARIANTS[variant]
-            resp = await self._query_with_recovery(
-                {
-                    method: params,
-                    "getMsgPushConfig": {"msg_push": {"name": [PUSH_SECTION]}},
-                }
-            )
-            try:
-                alarm = _alarm_info(_unwrap(resp, method))
-            except KasaException as err:
-                _LOGGER.debug("%s not usable: %s", method, err)
-                errors.append(str(err))
-                continue
-            if self._variant != variant:
-                _LOGGER.debug("Using %s for the alarm config", method)
-                self._variant = variant
-            try:
-                push = _section(_unwrap(resp, "getMsgPushConfig"), "msg_push", PUSH_SECTION)
-            except KasaException as err:
-                _LOGGER.debug("Notification config not available: %s", err)
-                push = None
-            return {"alarm": alarm, "push": push}
-        raise KasaException("; ".join(errors))
+        """Read the alarm and notification config in one multipleRequest."""
+        method, params = ALARM_READ
+        resp = await self._query_with_recovery(
+            {
+                method: params,
+                "getMsgPushConfig": {"msg_push": {"name": [PUSH_SECTION]}},
+            }
+        )
+        try:
+            alarm = _alarm_info(_unwrap(resp, method))
+        except KasaException as err:
+            raise KasaException(
+                f"{self.device.host} does not answer {method}, the only alarm call"
+                f" this integration uses (older calls were removed in 1.6.5): {err}"
+            ) from err
+        try:
+            push = _section(_unwrap(resp, "getMsgPushConfig"), "msg_push", PUSH_SECTION)
+        except KasaException as err:
+            _LOGGER.debug("Notification config not available: %s", err)
+            push = None
+        return {"alarm": alarm, "push": push}
 
     async def set_alarm(
         self, current: dict[str, Any], *, enabled: bool | None = None,
         sound: bool | None = None, light: bool | None = None,
     ) -> dict[str, Any]:
-        """Change the alarm, keeping the options that are not changed."""
-        modes = list(current.get("alarm_mode") or [MODE_SOUND, MODE_LIGHT])
+        """Change the alarm with setAlertConfig.
+
+        The whole config read from the camera is sent back (volume,
+        duration, light type, ...) with only the changed fields updated,
+        like the Tapo app and Tapo Control do with this call.
+        """
+        modes = alarm_modes(current)
         # Some firmwares call the sound mode "siren".
         sound_mode = "siren" if "siren" in modes else MODE_SOUND
         for mode, value in ((sound_mode, sound), (MODE_LIGHT, light)):
@@ -334,31 +342,15 @@ class TapoAlarmApi:
         if not modes:
             raise ValueError("At least one of sound or light must stay enabled")
         is_on = current.get("enabled") == "on" if enabled is None else enabled
-        state = "on" if is_on else "off"
-
-        if self._variant == "alert":
-            new = {
-                **current,
-                "enabled": state,
-                "alarm_mode": modes,
-                "sound_alarm_enabled": "on" if sound_mode in modes else "off",
-                "light_alarm_enabled": "on" if MODE_LIGHT in modes else "off",
-            }
-            await self._call("setAlertConfig", {"msg_alarm": {ALARM_SECTION: new}})
-        elif self._variant == "config":
-            new = {"enabled": state, "alarm_mode": modes}
-            await self._call("setAlarmConfig", {"msg_alarm": new})
-        else:
-            new = {
-                "alarm_type": current.get("alarm_type", "0"),
-                "light_type": current.get("light_type", "0"),
-                "enabled": state,
-                "alarm_mode": modes,
-            }
-            # Same raw request pytapo sends for cameras; setAlarmConfig with
-            # this layout fails with PROTOCOL_FORMAT_ERROR on C5x0.
-            await self._query({"set": {"msg_alarm": {ALARM_SECTION: new}}})
-        return {**current, **new}
+        new = {
+            **current,
+            "enabled": "on" if is_on else "off",
+            "alarm_mode": modes,
+            "sound_alarm_enabled": "on" if sound_mode in modes else "off",
+            "light_alarm_enabled": "on" if MODE_LIGHT in modes else "off",
+        }
+        await self._call("setAlertConfig", {"msg_alarm": {ALARM_SECTION: new}})
+        return new
 
     async def set_notifications(self, enabled: bool) -> dict[str, str]:
         """Turn app push notifications on/off."""

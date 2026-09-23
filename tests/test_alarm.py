@@ -37,27 +37,37 @@ async def refresh_after_command(hass: HomeAssistant) -> None:
     await hass.async_block_till_done()
 
 
+async def _press(hass: HomeAssistant, service: str, entity_id: str) -> None:
+    await hass.services.async_call(
+        "switch", service, {"entity_id": entity_id}, blocking=True
+    )
+
+
 class FakeProtocol:
     def __init__(self):
+        # Same fields as a real C520WS getAlertConfig answer.
         self.alarm = {
-            "enabled": "off",
-            "alarm_type": "3",
-            "light_type": "0",
+            "alarm_duration": "0",
             "alarm_mode": ["sound", "light"],
+            "alarm_type": "3",
+            "alarm_volume": "high",
+            "enabled": "off",
+            "light_alarm_enabled": "on",
+            "light_type": "1",
+            "sound_alarm_enabled": "on",
         }
         self.push = {"notification_enabled": "on", "rich_notification_enabled": "off"}
         self.requests = []
 
     async def query(self, request):
         self.requests.append(request)
-        method = next(iter(request))
-        if method == "set":
-            self.alarm = request[method]["msg_alarm"]["chn1_msg_alarm_info"]
-            return {}
         resp = {}
         for method, params in request.items():
-            if method == "getLastAlarmInfo":
+            if method == "getAlertConfig":
                 resp[method] = {"msg_alarm": {"chn1_msg_alarm_info": dict(self.alarm)}}
+            elif method == "setAlertConfig":
+                self.alarm = dict(params["msg_alarm"]["chn1_msg_alarm_info"])
+                resp[method] = {}
             elif method == "getMsgPushConfig":
                 resp[method] = {"msg_push": {"chn1_msg_push_info": dict(self.push)}}
             elif method == "setMsgPushConfig":
@@ -126,10 +136,14 @@ async def test_setup_and_toggle(hass: HomeAssistant) -> None:
         "switch", "turn_off", {"entity_id": "switch.bahce_alarm_light"}, blocking=True
     )
     assert dev.protocol.alarm == {
-        "alarm_type": "3",
-        "light_type": "0",
-        "enabled": "on",
+        "alarm_duration": "0",
         "alarm_mode": ["sound"],
+        "alarm_type": "3",
+        "alarm_volume": "high",
+        "enabled": "on",
+        "light_alarm_enabled": "off",
+        "light_type": "1",
+        "sound_alarm_enabled": "on",
     }
     await refresh_after_command(hass)
 
@@ -149,7 +163,9 @@ async def test_setup_and_toggle(hass: HomeAssistant) -> None:
     dev.update.assert_not_awaited()
     assert dev.protocol.requests == [
         {
-            "getLastAlarmInfo": {"msg_alarm": {"name": ["chn1_msg_alarm_info"]}},
+            "getAlertConfig": {
+                "msg_alarm": {"name": ["chn1_msg_alarm_info"], "table": ["usr_def_audio"]}
+            },
             "getMsgPushConfig": {"msg_push": {"name": ["chn1_msg_push_info"]}},
         }
     ]
@@ -181,69 +197,54 @@ async def test_config_flow(hass: HomeAssistant) -> None:
     assert result["result"].data["connection_parameters"] == CONNECTION
 
 
-class AlertConfigProtocol(FakeProtocol):
-    """Firmware that rejects getLastAlarmInfo and uses getAlertConfig."""
-
-    def __init__(self):
-        super().__init__()
-        self.alarm.update(
-            {"sound_alarm_enabled": "on", "light_alarm_enabled": "on", "alarm_volume": "7"}
-        )
-
-    async def query(self, request):
-        if "getLastAlarmInfo" in request:
-            self.requests.append(request)
-            return {
-                "getLastAlarmInfo": SmartErrorCode.INVALID_ARGUMENTS,
-                "getMsgPushConfig": {"msg_push": {"chn1_msg_push_info": dict(self.push)}},
-            }
-        method = next(iter(request))
-        if method == "getAlertConfig":
-            self.requests.append(request)
-            return {
-                method: {"msg_alarm": {"chn1_msg_alarm_info": dict(self.alarm)}},
-                "getMsgPushConfig": {"msg_push": {"chn1_msg_push_info": dict(self.push)}},
-            }
-        if method == "setAlertConfig":
-            self.requests.append(request)
-            self.alarm = request[method]["msg_alarm"]["chn1_msg_alarm_info"]
-            return {method: {}}
-        if method == "set":
-            raise AssertionError("raw set must not be used with getAlertConfig")
-        return await super().query(request)
-
-
-async def test_alert_config_firmware(hass: HomeAssistant) -> None:
+async def test_only_the_alert_config_calls_are_used(hass: HomeAssistant) -> None:
+    """Old alarm calls (getLastAlarmInfo, raw set, *AlarmConfig) are never sent."""
     dev = fake_device()
-    dev.protocol = AlertConfigProtocol()
-    entry = MockConfigEntry(domain=DOMAIN, data=DATA, unique_id="aa:bb:cc:dd:ee:ff")
-    entry.add_to_hass(hass)
-    with patch(
-        "custom_components.tapo_kasa_alarm.connect_device",
-        AsyncMock(return_value=dev),
-    ):
-        assert await hass.config_entries.async_setup(entry.entry_id)
-        await hass.async_block_till_done()
-    assert entry.state is ConfigEntryState.LOADED
-    assert hass.states.get("switch.bahce_alarm").state == "off"
-
-    await hass.services.async_call(
-        "switch", "turn_on", {"entity_id": "switch.bahce_alarm"}, blocking=True
-    )
+    entry, _ = await _setup(hass, dev)
+    await _press(hass, "turn_on", "switch.bahce_alarm")
     await refresh_after_command(hass)
-    await hass.services.async_call(
-        "switch", "turn_off", {"entity_id": "switch.bahce_alarm_sound"}, blocking=True
-    )
+    await _press(hass, "turn_off", "switch.bahce_alarm_sound")
     await refresh_after_command(hass)
+    methods = {m for request in dev.protocol.requests for m in request}
+    assert methods <= {"getAlertConfig", "setAlertConfig", "getMsgPushConfig"}
+    # The whole config is kept, only the changed fields differ.
+    assert dev.protocol.alarm["alarm_volume"] == "high"
+    assert dev.protocol.alarm["light_type"] == "1"
     assert dev.protocol.alarm["enabled"] == "on"
     assert dev.protocol.alarm["alarm_mode"] == ["light"]
     assert dev.protocol.alarm["sound_alarm_enabled"] == "off"
-    assert dev.protocol.alarm["alarm_volume"] == "7"
+    assert hass.states.get("switch.bahce_alarm_sound").state == "off"
 
-    # Later polls go straight to getAlertConfig.
-    dev.protocol.requests.clear()
-    await entry.runtime_data.async_refresh()
-    assert [next(iter(r)) for r in dev.protocol.requests] == ["getAlertConfig"]
+
+async def test_camera_without_alert_config_fails_clearly(hass: HomeAssistant) -> None:
+    dev = fake_device()
+    real_query = dev.protocol.query
+
+    async def old_firmware(request):
+        if "getAlertConfig" in request:
+            return {
+                "getAlertConfig": SmartErrorCode.INVALID_ARGUMENTS,
+                "getMsgPushConfig": {"msg_push": {"chn1_msg_push_info": {}}},
+            }
+        return await real_query(request)
+
+    dev.protocol.query = old_firmware
+    entry, _ = await _setup(hass, dev)
+    assert entry.state is ConfigEntryState.SETUP_RETRY
+    assert "getAlertConfig" in (entry.reason or "")
+
+
+def test_alarm_modes_follow_enabled_flags() -> None:
+    from custom_components.tapo_kasa_alarm.api import alarm_modes
+
+    assert alarm_modes({"alarm_mode": ["sound", "light"]}) == ["sound", "light"]
+    assert alarm_modes(
+        {"alarm_mode": ["sound", "light"], "sound_alarm_enabled": "off"}
+    ) == ["light"]
+    assert alarm_modes(
+        {"alarm_mode": ["light"], "sound_alarm_enabled": "on", "light_alarm_enabled": "on"}
+    ) == ["light", "sound"]
+    assert alarm_modes({"alarm_mode": ["siren"], "sound_alarm_enabled": "off"}) == []
 
 
 async def test_expired_session_recovers_like_tplink() -> None:
@@ -269,8 +270,8 @@ async def test_expired_session_recovers_like_tplink() -> None:
     assert state["alarm"]["enabled"] == "off"
     assert state["push"]["notification_enabled"] == "on"
     assert calls == [
-        ["getLastAlarmInfo", "getMsgPushConfig"],
-        ["getLastAlarmInfo"],
+        ["getAlertConfig", "getMsgPushConfig"],
+        ["getAlertConfig"],
         ["getMsgPushConfig"],
     ]
 
@@ -291,7 +292,6 @@ async def test_unreachable_camera_still_fails() -> None:
 
         dev.protocol.query = unreachable
         api = TapoAlarmApi(dev)
-        api._variant = "last"
         with pytest.raises(type(error)):
             await api.get_state()
         # No one-by-one retries on top of python-kasa's own retries.
