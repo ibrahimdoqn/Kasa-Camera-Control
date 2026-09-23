@@ -246,21 +246,72 @@ async def test_alert_config_firmware(hass: HomeAssistant) -> None:
     assert [next(iter(r)) for r in dev.protocol.requests] == ["getAlertConfig"]
 
 
-async def test_session_expired_is_not_retried() -> None:
-    """Like TP-Link: a 401 fails that request, python-kasa logs in again next time."""
+async def test_expired_session_recovers_like_tplink() -> None:
+    """Like python-kasa's device.update(): a failed poll is asked again one by one."""
     from kasa import KasaException
+
+    from custom_components.tapo_kasa_alarm.api import TapoAlarmApi
+
+    dev = fake_device()
+    real_query = dev.protocol.query
+    calls = []
+
+    async def expired_once(request):
+        calls.append(list(request))
+        if len(calls) == 1:
+            raise KasaException(
+                "responded with an unexpected status code 401 to passthrough"
+            )
+        return await real_query(request)
+
+    dev.protocol.query = expired_once
+    state = await TapoAlarmApi(dev).get_state()
+    assert state["alarm"]["enabled"] == "off"
+    assert state["push"]["notification_enabled"] == "on"
+    assert calls == [
+        ["getLastAlarmInfo", "getMsgPushConfig"],
+        ["getLastAlarmInfo"],
+        ["getMsgPushConfig"],
+    ]
+
+
+async def test_unreachable_camera_still_fails() -> None:
+    """If the camera does not answer at all the poll fails at once (unavailable)."""
+    from kasa.exceptions import TimeoutError as KasaTimeoutError, _ConnectionError
+
+    from custom_components.tapo_kasa_alarm.api import TapoAlarmApi
+
+    for error in (_ConnectionError("Connect call failed"), KasaTimeoutError("timeout")):
+        dev = fake_device()
+        calls = {"n": 0}
+
+        async def unreachable(request, error=error):
+            calls["n"] += 1
+            raise error
+
+        dev.protocol.query = unreachable
+        api = TapoAlarmApi(dev)
+        api._variant = "last"
+        with pytest.raises(type(error)):
+            await api.get_state()
+        # No one-by-one retries on top of python-kasa's own retries.
+        assert calls["n"] == 1
+
+
+async def test_authentication_error_is_not_recovered() -> None:
+    from kasa import AuthenticationError
 
     from custom_components.tapo_kasa_alarm.api import TapoAlarmApi
 
     dev = fake_device()
     calls = {"n": 0}
 
-    async def expired(request):
+    async def denied(request):
         calls["n"] += 1
-        raise KasaException("responded with an unexpected status code 401 to passthrough")
+        raise AuthenticationError("bad password")
 
-    dev.protocol.query = expired
-    with pytest.raises(KasaException):
+    dev.protocol.query = denied
+    with pytest.raises(AuthenticationError):
         await TapoAlarmApi(dev).get_state()
     assert calls["n"] == 1
 

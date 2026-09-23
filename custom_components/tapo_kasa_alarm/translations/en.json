@@ -38,7 +38,7 @@
         },
         "data_description": {
           "scan_interval": "The TP-Link integration polls every 5 seconds.",
-          "session_renew": "The cameras end the session about 10 minutes after login, which makes the switches unavailable for a moment. The integration logs in again before that. 0 turns it off.",
+          "session_renew": "The cameras end the session about 10 minutes after login, and the next request fails once. The integration logs in again before that. 0 turns it off.",
           "discovery": "Looks for the camera by MAC address at start and every 15 minutes, like the TP-Link integration. Turn off if the camera has a static IP."
         }
       }

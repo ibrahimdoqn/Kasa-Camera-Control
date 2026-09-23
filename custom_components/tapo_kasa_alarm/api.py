@@ -25,7 +25,7 @@ from kasa import (
     Discover,
     KasaException,
 )
-from kasa.exceptions import SmartErrorCode
+from kasa.exceptions import SmartErrorCode, _ConnectionError
 
 from .const import (
     ALARM_SECTION,
@@ -213,6 +213,43 @@ class TapoAlarmApi:
         if isinstance(resp.get(method), SmartErrorCode):
             raise KasaException(f"{method} failed: {resp[method].name}")
 
+    async def _query_with_recovery(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Query like python-kasa's device.update() does for the TP-Link integration.
+
+        If the combined request fails (for example the camera ended the
+        session and answers 401), python-kasa has already reset the session.
+        device.update() then asks each question again on its own, with a new
+        login, and only marks the failing ones as errors. That is why the
+        TP-Link integration does not go unavailable when a session expires.
+        Authentication errors are not recovered, so reauth still starts.
+        Connection errors and timeouts are not either: python-kasa has already
+        retried those 3 times and the camera is not answering, asking again
+        one by one would only make the poll take much longer.
+        """
+        try:
+            return await self._query(request)
+        except (AuthenticationError, TimeoutError, _ConnectionError):
+            raise
+        except Exception as err:  # noqa: BLE001 - same as python-kasa's update
+            _LOGGER.warning(
+                "Error querying %s for %s, asking again one by one: %s",
+                self.device.host,
+                ", ".join(request),
+                err,
+            )
+        responses: dict[str, Any] = {}
+        for method, params in request.items():
+            try:
+                responses[method] = (await self._query({method: params}))[method]
+            except AuthenticationError:
+                raise
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.warning(
+                    "Error querying %s for %s: %s", self.device.host, method, err
+                )
+                responses[method] = SmartErrorCode.INTERNAL_QUERY_ERROR
+        return responses
+
     async def get_state(self) -> dict[str, Any]:
         """Read alarm and notification config in one multipleRequest.
 
@@ -224,7 +261,7 @@ class TapoAlarmApi:
         errors = []
         for variant in variants:
             method, params = ALARM_VARIANTS[variant]
-            resp = await self._query(
+            resp = await self._query_with_recovery(
                 {
                     method: params,
                     "getMsgPushConfig": {"msg_push": {"name": [PUSH_SECTION]}},
