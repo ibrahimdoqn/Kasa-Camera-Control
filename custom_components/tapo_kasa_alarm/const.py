@@ -7,15 +7,22 @@ from datetime import timedelta
 DOMAIN = "tapo_kasa_alarm"
 
 CONF_SCAN_INTERVAL = "scan_interval"
-DEFAULT_SCAN_INTERVAL = 60
-MIN_SCAN_INTERVAL = 15
+# Same polling interval as the TP-Link integration.
+DEFAULT_SCAN_INTERVAL = 5
+MIN_SCAN_INTERVAL = 5
 
-DEFAULT_TIMEOUT = 10
+# Follow cameras to a new IP by MAC with UDP discovery (on by default,
+# like the TP-Link integration; can be turned off for static IPs).
+CONF_DISCOVERY = "discovery"
+DEFAULT_DISCOVERY = True
+DISCOVERY_INTERVAL = timedelta(minutes=15)
+
+# Same delay as the TP-Link integration before refreshing after a command.
+REQUEST_REFRESH_DELAY = 0.35
+
+# Same timeouts as the TP-Link integration.
+DEFAULT_TIMEOUT = 5
 DISCOVERY_TIMEOUT = 5
-# Look for a camera that stopped answering at a new IP at most this often.
-REDISCOVERY_INTERVAL = timedelta(minutes=15)
-# Consecutive failed polls before looking for a new IP.
-REDISCOVERY_AFTER_FAILURES = 3
 
 CONF_CONNECTION_PARAMETERS = "connection_parameters"
 

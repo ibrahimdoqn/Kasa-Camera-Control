@@ -32,7 +32,12 @@
     "step": {
       "init": {
         "data": {
-          "scan_interval": "Polling interval (seconds)"
+          "scan_interval": "Polling interval (seconds)",
+          "discovery": "Follow the camera to a new IP address (MAC discovery)"
+        },
+        "data_description": {
+          "scan_interval": "The TP-Link integration polls every 5 seconds.",
+          "discovery": "Looks for the camera by MAC address at start and every 15 minutes, like the TP-Link integration. Turn off if the camera has a static IP."
         }
       }
     }
@@ -50,6 +55,11 @@
       },
       "notifications": {
         "name": "Notifications"
+      }
+    },
+    "button": {
+      "reboot": {
+        "name": "Reboot"
       }
     }
   }

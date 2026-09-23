@@ -32,7 +32,12 @@
     "step": {
       "init": {
         "data": {
-          "scan_interval": "Sorgulama aralığı (saniye)"
+          "scan_interval": "Sorgulama aralığı (saniye)",
+          "discovery": "IP değişirse kamerayı bul (MAC ile arama)"
+        },
+        "data_description": {
+          "scan_interval": "TP-Link entegrasyonu 5 saniyede bir sorgular.",
+          "discovery": "TP-Link entegrasyonundaki gibi, açılışta ve 15 dakikada bir kamerayı MAC adresiyle arar. Kameranın sabit IP'si varsa kapatın."
         }
       }
     }
@@ -50,6 +55,11 @@
       },
       "notifications": {
         "name": "Bildirimler"
+      }
+    },
+    "button": {
+      "reboot": {
+        "name": "Yeniden başlat"
       }
     }
   }

@@ -23,7 +23,9 @@ from homeassistant.helpers.device_registry import format_mac
 from .api import AuthenticationError, KasaException, connect_device
 from .const import (
     CONF_CONNECTION_PARAMETERS,
+    CONF_DISCOVERY,
     CONF_SCAN_INTERVAL,
+    DEFAULT_DISCOVERY,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     MIN_SCAN_INTERVAL,
@@ -154,7 +156,7 @@ class TapoAlarmConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class TapoAlarmOptionsFlow(OptionsFlow):
-    """Polling interval option."""
+    """Polling interval and IP discovery options."""
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -172,6 +174,12 @@ class TapoAlarmOptionsFlow(OptionsFlow):
                             CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
                         ),
                     ): vol.All(vol.Coerce(int), vol.Range(min=MIN_SCAN_INTERVAL)),
+                    vol.Required(
+                        CONF_DISCOVERY,
+                        default=self.config_entry.options.get(
+                            CONF_DISCOVERY, DEFAULT_DISCOVERY
+                        ),
+                    ): bool,
                 }
             ),
         )

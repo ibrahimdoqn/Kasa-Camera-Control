@@ -1,15 +1,16 @@
 """Kasa Camera Control: Tapo camera alarm control via python-kasa.
 
-The camera is connected the same way Home Assistant's TP-Link integration
-does it: a Home Assistant managed HTTP session, the connection parameters
-saved from the first successful connection, a MAC check so a changed DHCP
-lease never mixes up cameras, and UDP discovery to follow a camera to a
-new IP address.
+The camera is connected and polled the same way Home Assistant's TP-Link
+integration does it: a Home Assistant managed HTTP session, the connection
+parameters saved from the first successful connection, a MAC check so a
+changed DHCP lease never mixes up cameras, a full device update every 5
+seconds and UDP discovery to follow a camera to a new IP address.
 """
 
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from kasa.httpclient import get_cookie_jar
 
@@ -17,20 +18,45 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
-from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import config_validation as cv, entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.device_registry import format_mac
+from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.helpers.typing import ConfigType
 
 from .api import AuthenticationError, KasaException, TapoAlarmApi, connect_device
-from .const import CONF_CONNECTION_PARAMETERS, CONF_SCAN_INTERVAL, DOMAIN, scan_interval
+from .const import (
+    CONF_CONNECTION_PARAMETERS,
+    CONF_SCAN_INTERVAL,
+    DISCOVERY_INTERVAL,
+    DOMAIN,
+    scan_interval,
+)
 from .coordinator import TapoAlarmCoordinator
-from .discovery import async_update_host
+from .discovery import async_discover_and_update
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS = [Platform.SWITCH]
+PLATFORMS = [Platform.BUTTON, Platform.SWITCH]
+
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 type TapoAlarmConfigEntry = ConfigEntry[TapoAlarmCoordinator]
+
+
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    """Run discovery at start and every 15 minutes, like the TP-Link integration."""
+
+    async def _async_discovery(*_: Any) -> None:
+        await async_discover_and_update(hass)
+
+    hass.async_create_background_task(
+        _async_discovery(), f"{DOMAIN} first discovery", eager_start=True
+    )
+    async_track_time_interval(
+        hass, _async_discovery, DISCOVERY_INTERVAL, cancel_on_shutdown=True
+    )
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: TapoAlarmConfigEntry) -> bool:
@@ -51,16 +77,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: TapoAlarmConfigEntry) ->
     except AuthenticationError as err:
         raise ConfigEntryAuthFailed(str(err)) from err
     except KasaException as err:
-        if await async_update_host(hass, entry):
-            raise ConfigEntryNotReady(f"{err}; camera found at a new IP address") from err
         raise ConfigEntryNotReady(str(err)) from err
 
-    if entry.unique_id and format_mac(device.mac) != entry.unique_id:
+    if entry.unique_id and (found := format_mac(device.mac)) != entry.unique_id:
         # The DHCP lease probably moved and another device now has this IP.
-        # Do not mix up cameras: look for ours and retry.
-        found = format_mac(device.mac)
+        # Do not mix up cameras: wait for discovery to find ours.
         await device.disconnect()
-        await async_update_host(hass, entry)
         raise ConfigEntryNotReady(
             f"Expected {entry.unique_id} at {host} but found {found}"
         )
@@ -96,7 +118,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: TapoAlarmConfigEntry) -
 
 
 async def _async_options_updated(hass: HomeAssistant, entry: TapoAlarmConfigEntry) -> None:
-    """Apply a changed polling interval without reconnecting."""
+    """Apply a changed polling interval without reconnecting.
+
+    The discovery option is read on every discovery run.
+    """
     entry.runtime_data.update_interval = scan_interval(
         entry.options.get(CONF_SCAN_INTERVAL)
     )

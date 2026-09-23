@@ -1,33 +1,25 @@
-"""Polling coordinator for the camera alarm and notification state."""
+"""Polling coordinator, modelled on the TP-Link integration's coordinator."""
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 import logging
 from typing import Any
-
-from kasa.exceptions import DeviceError
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
+from homeassistant.helpers.debounce import Debouncer
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
-from homeassistant.util import dt as dt_util
 
 from .api import AuthenticationError, KasaException, TapoAlarmApi
-from .const import (
-    CONF_SCAN_INTERVAL,
-    DOMAIN,
-    REDISCOVERY_AFTER_FAILURES,
-    REDISCOVERY_INTERVAL,
-    scan_interval,
-)
-from .discovery import async_update_host
+from .const import CONF_SCAN_INTERVAL, REQUEST_REFRESH_DELAY, scan_interval
 
 _LOGGER = logging.getLogger(__name__)
 
 
 class TapoAlarmCoordinator(DataUpdateCoordinator[dict[str, Any]]):
-    """Poll alarm + notification config, one light request per interval.
+    """Poll the camera like the TP-Link integration, plus the alarm config.
 
     data = {"alarm": {...}, "push": {...} | None}
     """
@@ -39,51 +31,57 @@ class TapoAlarmCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             hass,
             _LOGGER,
             config_entry=entry,
-            name=f"{DOMAIN} {entry.title}",
+            name=api.device.host,
             update_interval=scan_interval(entry.options.get(CONF_SCAN_INTERVAL)),
+            # We don't want an immediate refresh since the device
+            # takes a moment to reflect the state change
+            request_refresh_debouncer=Debouncer(
+                hass, _LOGGER, cooldown=REQUEST_REFRESH_DELAY, immediate=False
+            ),
         )
         self.api = api
-        self._failures = 0
-        self._last_rediscovery = None
 
     async def _async_update_data(self) -> dict[str, Any]:
         try:
-            data = await self.api.get_state()
+            await self.api.update()
+            return await self.api.get_state()
         except AuthenticationError as err:
-            raise ConfigEntryAuthFailed(str(err)) from err
+            raise ConfigEntryAuthFailed(f"Authentication failed on update: {err}") from err
         except KasaException as err:
-            if not isinstance(err, DeviceError):
-                # The camera did not answer at all, it may have a new IP.
-                await self._async_maybe_rediscover()
-            raise UpdateFailed(str(err)) from err
-        self._failures = 0
-        return data
+            raise UpdateFailed(f"Error on update: {err}") from err
 
-    async def _async_maybe_rediscover(self) -> None:
-        self._failures += 1
-        now = dt_util.utcnow()
-        if self._failures < REDISCOVERY_AFTER_FAILURES or (
-            self._last_rediscovery and now - self._last_rediscovery < REDISCOVERY_INTERVAL
-        ):
-            return
-        self._last_rediscovery = now
-        if await async_update_host(self.hass, self.config_entry):
-            self.hass.config_entries.async_schedule_reload(self.config_entry.entry_id)
+    async def async_command(
+        self,
+        func: Callable[[], Awaitable[Any]],
+        name: str,
+        *,
+        refresh: bool = True,
+    ) -> None:
+        """Run a command, map errors and refresh after, like the TP-Link integration."""
+        try:
+            await func()
+        except AuthenticationError as err:
+            self.config_entry.async_start_reauth(self.hass)
+            raise HomeAssistantError(f"Authentication failed on {name}: {err}") from err
+        except TimeoutError as err:
+            raise HomeAssistantError(f"Timeout on {name}: {err}") from err
+        except (KasaException, ValueError) as err:
+            raise HomeAssistantError(f"Error on {name}: {err}") from err
+        if refresh:
+            await self.async_request_refresh()
 
     async def async_set_alarm(self, **changes: bool) -> None:
-        """Write alarm settings and publish the new state immediately."""
-        try:
-            new = await self.api.set_alarm(self.data["alarm"], **changes)
-        except (KasaException, ValueError) as err:
-            raise HomeAssistantError(f"Could not set alarm: {err}") from err
-        self.async_set_updated_data({**self.data, "alarm": new})
+        """Write alarm settings."""
+        await self.async_command(
+            lambda: self.api.set_alarm(self.data["alarm"], **changes), "set alarm"
+        )
 
     async def async_set_notifications(self, enabled: bool) -> None:
-        """Write notification setting and publish the new state immediately."""
-        try:
-            new = await self.api.set_notifications(enabled)
-        except KasaException as err:
-            raise HomeAssistantError(f"Could not set notifications: {err}") from err
-        self.async_set_updated_data(
-            {**self.data, "push": {**(self.data.get("push") or {}), **new}}
+        """Write the notification setting."""
+        await self.async_command(
+            lambda: self.api.set_notifications(enabled), "set notifications"
         )
+
+    async def async_reboot(self) -> None:
+        """Reboot the camera. It is unreachable for a while, so no refresh."""
+        await self.async_command(self.api.reboot, "reboot", refresh=False)
