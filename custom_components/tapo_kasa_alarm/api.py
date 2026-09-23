@@ -18,6 +18,7 @@ from kasa import (
     AuthenticationError,
     Credentials,
     Device,
+    DeviceError,
     DeviceConfig,
     DeviceConnectionParameters,
     DeviceEncryptionType,
@@ -25,7 +26,12 @@ from kasa import (
     Discover,
     KasaException,
 )
-from kasa.exceptions import SmartErrorCode, _ConnectionError
+from kasa.exceptions import (
+    SMART_AUTHENTICATION_ERRORS,
+    SMART_RETRYABLE_ERRORS,
+    SmartErrorCode,
+    _ConnectionError,
+)
 
 from .const import (
     ALARM_SECTION,
@@ -40,6 +46,7 @@ _LOGGER = logging.getLogger(__name__)
 
 __all__ = [
     "AuthenticationError",
+    "DeviceError",
     "KasaException",
     "TapoAlarmApi",
     "connect_device",
@@ -157,6 +164,24 @@ def _alarm_info(result: dict[str, Any]) -> dict[str, Any]:
     return info
 
 
+def is_permanent_error(err: Exception) -> bool:
+    """Return True if retrying the same write cannot help.
+
+    The camera rejected the command with an error code (for example
+    PROTOCOL_FORMAT_ERROR or INVALID_ARGUMENTS), or the request itself is
+    invalid. Session expiry (401), timeouts, connection errors and the
+    error codes python-kasa itself retries are temporary.
+    """
+    if isinstance(err, ValueError):
+        return True
+    return (
+        isinstance(err, DeviceError)
+        and not isinstance(err, AuthenticationError)
+        and err.error_code is not None
+        and err.error_code not in SMART_RETRYABLE_ERRORS
+    )
+
+
 def _unwrap(resp: dict[str, Any], method: str) -> dict[str, Any]:
     result = resp.get(method)
     if isinstance(result, SmartErrorCode):
@@ -210,8 +235,13 @@ class TapoAlarmApi:
 
     async def _call(self, method: str, params: dict[str, Any]) -> None:
         resp = await self._query({method: params})
-        if isinstance(resp.get(method), SmartErrorCode):
-            raise KasaException(f"{method} failed: {resp[method].name}")
+        if isinstance(code := resp.get(method), SmartErrorCode):
+            # Keep the camera's error code so callers can tell a rejected
+            # command from a temporary failure.
+            msg = f"{method} failed: {code.name}"
+            if code in SMART_AUTHENTICATION_ERRORS:
+                raise AuthenticationError(msg, error_code=code)
+            raise DeviceError(msg, error_code=code)
 
     async def _query_with_recovery(self, request: dict[str, Any]) -> dict[str, Any]:
         """Query like python-kasa's device.update() does for the TP-Link integration.

@@ -119,9 +119,25 @@ Entegrasyon, Home Assistant'ın resmi TP-Link entegrasyonunun kodu örnek alına
 - Her kamera için bir kilit vardır. İstekler sırayla gider, kameraya aynı anda asla iki istek gitmez.
 - Her kameranın kendi zamanlayıcısı vardır. Kameralar birbirini beklemez.
 
-### Anahtara veya düğmeye basınca
-- Tek bir yazma isteği gider.
-- TP-Link'teki gibi, 0,35 saniye sonra kamera yeniden sorgulanır ve yeni durum oradan okunur.
+### Anahtara basınca: yazma kuyruğu
+Anahtar değişiklikleri bir kuyruktan geçer. İstenen değer, kamera onu okuyup doğrulayana kadar kuyrukta tutulur.
+
+- **Hemen yazılır:** Anahtara basınca istenen değer kuyruğa alınır ve hemen kameraya gönderilir. TP-Link'teki gibi 0,35 saniye sonra kamera yeniden sorgulanır.
+- **Aynı değer yazılmaz:**
+  - Kamerada zaten o değer varsa hiç yazılmaz.
+  - Aynı ayar için aynı değer zaten kuyruktaysa tekrar gönderilmez.
+- **Doğrulama:** Her sorguda kameradan okunan değer istenenle karşılaştırılır. Aynıysa ayar kuyruktan çıkar.
+  - Doğrulama yalnızca yazmadan **sonra** okunan veriyle yapılır. Yazma sırasında zaten okunmakta olan eski veri yüzünden tekrar yazılmaz.
+- **Düzeltme:** Kamera yazmayı kabul edip değeri uygulamadıysa ayar sonraki sorgularda yeniden yazılır. En fazla 3 kez denenir; kamera yine de tutmazsa vazgeçilir ve log'a hata yazılır.
+- **Geçici hata:** Oturum kapanması (`401`), zaman aşımı ve bağlantı hatalarında kullanıcıya hata gösterilmez. Ayar kuyrukta kalır, log'a uyarı yazılır ve bir sonraki sorguda (5 saniye sonra) tekrar denenir. Kamera ağdan düşmüşse, geri geldiğinde yazılır.
+- **Kalıcı hata:** Kamera komutu reddederse (örneğin `PROTOCOL_FORMAT_ERROR`) veya istek geçersizse (ses ve ışığın ikisi birden kapatılırsa) ekranda hata gösterilir ve ayar kuyruktan çıkarılır.
+- **Son değer geçerli:** Aynı ayara art arda basılırsa yalnızca son değer yazılır. Alarm, alarm sesi ve alarm ışığı tek bir yazmada birlikte gönderilir.
+- **Görünüm:** Bekleyen bir yazma varken anahtar istenen değeri gösterir. `pending_write` özniteliği `true` olur; kamera doğrulayınca `false` olur.
+- **Kimlik doğrulama hatası:** Ayar kuyrukta kalır ve Home Assistant yeniden giriş bilgisi ister.
+- Kuyruk bellekte tutulur. Home Assistant yeniden başlarsa bekleyen yazmalar silinir.
+
+### Yeniden başlatma düğmesine basınca
+- Kuyruktan geçmez, tek seferlik bir komuttur.
 - Yeniden başlatmadan sonra sorgu yapılmaz. Kamera bir süre "kullanılamıyor" görünür ve açılınca kendiliğinden geri gelir.
 
 ### Alarm ayarını okuma
@@ -148,6 +164,7 @@ TP-Link entegrasyonundaki gibi:
 ### TP-Link'ten farkları
 - Alarm, alarm sesi/ışığı ve bildirim anahtarları ile kameralar için yeniden başlatma düğmesi. TP-Link'te bunlar yok.
 - Her sorguda tam güncelleme yerine yalnızca alarm ve bildirim ayarı okunur (1 istek; TP-Link'te genelde 2–3).
+- Anahtar değişiklikleri kuyruktan geçer, doğrulanır ve başarısız olursa tekrar denenir. TP-Link'te komut bir kez gönderilir, hata olursa ekranda gösterilir.
 - Oturum süre dolmadan yenilenir (varsayılan 8 dakika). TP-Link oturumun dolmasını bekler; o sorgu önce başarısız olur, log'a hata yazılır ve sorular yeniden sorulur.
 - Kamera hiç cevap vermediğinde sorular tek tek tekrar sorulmaz. TP-Link her soruyu tek tek tekrar dener, bu da ulaşılamayan bir kamerada sorguyu uzatır.
 - Sorgulama aralığı, oturum yenileme ve MAC ile arama seçenekten değiştirilebilir. TP-Link'te bu ayarlar sabittir; sorgulama ve arama varsayılanları TP-Link'inkilerle aynıdır.
@@ -165,6 +182,7 @@ TP-Link entegrasyonundaki gibi:
       not_from: unavailable
   ```
 - **Kamera zorlanıyor gibi:** Sorgulama aralığını 30 veya 60 saniyeye çıkarın. Bunun tek bedeli, kamerada yapılan değişikliklerin (örneğin Tapo uygulamasından) Home Assistant'ta daha geç görünmesidir.
+- **Anahtar istenen değeri gösteriyor ama `pending_write: true` kalıyor:** Yazma henüz kamera tarafından doğrulanmadı. Log'da `writing ... failed, will retry` uyarısı varsa kameraya o an ulaşılamıyordur; ulaşılınca yazılır. `does not keep ... giving up` hatası varsa kamera ayarı kabul edip uygulamamıştır.
 - **Ayrıntılı log:** `configuration.yaml` dosyasına ekleyip Home Assistant'ı yeniden başlatın:
   ```yaml
   logger:

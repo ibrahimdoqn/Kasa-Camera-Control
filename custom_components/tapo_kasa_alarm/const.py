@@ -23,6 +23,10 @@ CONF_SESSION_RENEW = "session_renew"
 DEFAULT_SESSION_RENEW = 8  # minutes
 MAX_SESSION_RENEW = 60
 
+# A write the camera accepts but does not apply is written again this many
+# times (checked on each poll) before it is given up.
+MAX_WRITE_MISMATCHES = 3
+
 # Same delay as the TP-Link integration before refreshing after a command.
 REQUEST_REFRESH_DELAY = 0.35
 

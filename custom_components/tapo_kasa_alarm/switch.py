@@ -11,7 +11,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import TapoAlarmConfigEntry
 from .const import MODE_LIGHT, MODE_SOUND
-from .coordinator import TapoAlarmCoordinator
+from .coordinator import NOTIFICATIONS, TapoAlarmCoordinator
 from .entity import TapoAlarmEntity
 
 
@@ -33,54 +33,53 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
-class AlarmSwitch(TapoAlarmEntity, SwitchEntity):
+class QueuedSwitch(TapoAlarmEntity, SwitchEntity):
+    """A switch whose changes go through the coordinator's write queue."""
+
+    _key: str
+
+    @property
+    def is_on(self) -> bool | None:
+        return self.coordinator.value(self._key)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        # True while the value is queued and not yet confirmed by the camera.
+        return {"pending_write": self._key in self.coordinator.pending}
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await self.coordinator.async_set(self._key, True)
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        await self.coordinator.async_set(self._key, False)
+
+
+class AlarmSwitch(QueuedSwitch):
     """Turns the camera's automatic alarm on/off."""
 
     _attr_icon = "mdi:alarm-light"
+    _key = "enabled"
 
     def __init__(self, coordinator: TapoAlarmCoordinator) -> None:
         super().__init__(coordinator, "alarm")
 
-    @property
-    def is_on(self) -> bool:
-        return self.coordinator.data["alarm"].get("enabled") == "on"
 
-    async def async_turn_on(self, **kwargs: Any) -> None:
-        await self.coordinator.async_set_alarm(enabled=True)
-
-    async def async_turn_off(self, **kwargs: Any) -> None:
-        await self.coordinator.async_set_alarm(enabled=False)
-
-
-class AlarmModeSwitch(TapoAlarmEntity, SwitchEntity):
+class AlarmModeSwitch(QueuedSwitch):
     """Selects whether the alarm uses sound and/or light."""
 
     _attr_entity_category = EntityCategory.CONFIG
 
     def __init__(self, coordinator: TapoAlarmCoordinator, mode: str) -> None:
         super().__init__(coordinator, f"alarm_{mode}")
-        self._mode = mode
+        self._key = mode
         self._attr_icon = "mdi:volume-high" if mode == MODE_SOUND else "mdi:lightbulb-on"
 
-    @property
-    def is_on(self) -> bool:
-        modes = self.coordinator.data["alarm"].get("alarm_mode") or []
-        # Some firmwares call the sound mode "siren".
-        if self._mode == MODE_SOUND:
-            return MODE_SOUND in modes or "siren" in modes
-        return self._mode in modes
 
-    async def async_turn_on(self, **kwargs: Any) -> None:
-        await self.coordinator.async_set_alarm(**{self._mode: True})
-
-    async def async_turn_off(self, **kwargs: Any) -> None:
-        await self.coordinator.async_set_alarm(**{self._mode: False})
-
-
-class NotificationSwitch(TapoAlarmEntity, SwitchEntity):
+class NotificationSwitch(QueuedSwitch):
     """Tapo app push notifications on/off."""
 
     _attr_icon = "mdi:bell-ring"
+    _key = NOTIFICATIONS
 
     def __init__(self, coordinator: TapoAlarmCoordinator) -> None:
         super().__init__(coordinator, "notifications")
@@ -88,13 +87,3 @@ class NotificationSwitch(TapoAlarmEntity, SwitchEntity):
     @property
     def available(self) -> bool:
         return super().available and bool(self.coordinator.data.get("push"))
-
-    @property
-    def is_on(self) -> bool:
-        return (self.coordinator.data.get("push") or {}).get("notification_enabled") == "on"
-
-    async def async_turn_on(self, **kwargs: Any) -> None:
-        await self.coordinator.async_set_notifications(True)
-
-    async def async_turn_off(self, **kwargs: Any) -> None:
-        await self.coordinator.async_set_notifications(False)

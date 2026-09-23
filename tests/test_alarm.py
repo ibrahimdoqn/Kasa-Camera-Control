@@ -432,3 +432,169 @@ async def test_session_renewed_before_camera_ends_it() -> None:
 async def test_default_session_renew(hass: HomeAssistant) -> None:
     entry, _ = await _setup(hass, fake_device())
     assert entry.runtime_data.api.session_renew_minutes == 8
+
+
+# --- Write queue ---------------------------------------------------------
+
+
+def _writes(dev):
+    """Alarm and notification writes the fake camera received."""
+    return [
+        r for r in dev.protocol.requests if next(iter(r)) in ("set", "setMsgPushConfig")
+    ]
+
+
+async def _press(hass, service, entity_id):
+    await hass.services.async_call(
+        "switch", service, {"entity_id": entity_id}, blocking=True
+    )
+
+
+async def test_same_value_is_not_written(hass: HomeAssistant) -> None:
+    dev = fake_device()
+    await _setup(hass, dev)
+    # Alarm is off, sound is on, notifications are on: nothing to write.
+    await _press(hass, "turn_off", "switch.bahce_alarm")
+    await _press(hass, "turn_on", "switch.bahce_alarm_sound")
+    await _press(hass, "turn_on", "switch.bahce_notifications")
+    assert _writes(dev) == []
+
+    await _press(hass, "turn_on", "switch.bahce_alarm")
+    assert len(_writes(dev)) == 1
+    # Already queued with the same value: not written again.
+    await _press(hass, "turn_on", "switch.bahce_alarm")
+    assert len(_writes(dev)) == 1
+
+    await refresh_after_command(hass)
+    state = hass.states.get("switch.bahce_alarm")
+    assert state.state == "on"
+    assert state.attributes["pending_write"] is False
+    # Confirmed by the camera: pressing again writes nothing.
+    await _press(hass, "turn_on", "switch.bahce_alarm")
+    assert len(_writes(dev)) == 1
+
+
+async def test_failed_write_is_retried_on_next_update(hass: HomeAssistant) -> None:
+    from kasa import KasaException
+
+    dev = fake_device()
+    entry, _ = await _setup(hass, dev)
+    real_query = dev.protocol.query
+    fail = {"writes": 2}
+
+    async def flaky(request):
+        if next(iter(request)) == "set" and fail["writes"]:
+            fail["writes"] -= 1
+            raise KasaException("unexpected status code 401 to passthrough")
+        return await real_query(request)
+
+    dev.protocol.query = flaky
+    # No error for the user: the value stays queued.
+    await _press(hass, "turn_on", "switch.bahce_alarm")
+    state = hass.states.get("switch.bahce_alarm")
+    assert state.state == "on"
+    assert state.attributes["pending_write"] is True
+    assert dev.protocol.alarm["enabled"] == "off"
+
+    await refresh_after_command(hass)  # retry 1 fails again
+    assert dev.protocol.alarm["enabled"] == "off"
+    assert entry.runtime_data.pending == {"enabled": True}
+
+    await entry.runtime_data.async_refresh()  # retry 2 succeeds
+    assert dev.protocol.alarm["enabled"] == "on"
+    await entry.runtime_data.async_refresh()  # verified
+    assert entry.runtime_data.pending == {}
+    assert hass.states.get("switch.bahce_alarm").attributes["pending_write"] is False
+
+
+async def test_write_not_applied_is_corrected_then_given_up(hass: HomeAssistant) -> None:
+    from custom_components.tapo_kasa_alarm.const import MAX_WRITE_MISMATCHES
+
+    dev = fake_device()
+    entry, _ = await _setup(hass, dev)
+    real_query = dev.protocol.query
+
+    async def ignores_writes(request):
+        if next(iter(request)) == "set":
+            dev.protocol.requests.append(request)
+            return {}  # accepted, but not applied
+        return await real_query(request)
+
+    dev.protocol.query = ignores_writes
+    await _press(hass, "turn_on", "switch.bahce_alarm")
+    assert len(_writes(dev)) == 1
+    for _ in range(MAX_WRITE_MISMATCHES + 1):
+        await entry.runtime_data.async_refresh()
+    # Written again after each mismatch, then given up.
+    assert len(_writes(dev)) == 1 + MAX_WRITE_MISMATCHES
+    assert entry.runtime_data.pending == {}
+    assert hass.states.get("switch.bahce_alarm").state == "off"
+
+
+async def test_rejected_write_is_reported_and_dropped(hass: HomeAssistant) -> None:
+    from homeassistant.exceptions import HomeAssistantError
+
+    dev = fake_device()
+    entry, _ = await _setup(hass, dev)
+    real_query = dev.protocol.query
+
+    async def rejects(request):
+        if next(iter(request)) == "set":
+            raise DeviceError(
+                "PROTOCOL_FORMAT_ERROR", error_code=SmartErrorCode.PROTOCOL_FORMAT_ERROR
+            )
+        return await real_query(request)
+
+    dev.protocol.query = rejects
+    with pytest.raises(HomeAssistantError):
+        await _press(hass, "turn_on", "switch.bahce_alarm")
+    assert entry.runtime_data.pending == {}
+    assert hass.states.get("switch.bahce_alarm").state == "off"
+
+
+async def test_last_value_wins_and_alarm_settings_are_written_together(
+    hass: HomeAssistant,
+) -> None:
+    from kasa import KasaException
+
+    dev = fake_device()
+    entry, _ = await _setup(hass, dev)
+    real_query = dev.protocol.query
+    offline = {"on": True}
+
+    async def maybe_offline(request):
+        if next(iter(request)) == "set" and offline["on"]:
+            raise KasaException("unexpected status code 401 to passthrough")
+        return await real_query(request)
+
+    dev.protocol.query = maybe_offline
+    await _press(hass, "turn_on", "switch.bahce_alarm")
+    await _press(hass, "turn_off", "switch.bahce_alarm_light")
+    await _press(hass, "turn_off", "switch.bahce_alarm")  # changed mind
+    assert entry.runtime_data.pending == {"enabled": False, "light": False}
+
+    offline["on"] = False
+    dev.protocol.requests.clear()
+    await entry.runtime_data.async_refresh()
+    writes = _writes(dev)
+    # One write with the latest values of all queued alarm settings.
+    assert len(writes) == 1
+    sent = writes[0]["set"]["msg_alarm"]["chn1_msg_alarm_info"]
+    assert sent["enabled"] == "off"
+    assert sent["alarm_mode"] == ["sound"]
+    await entry.runtime_data.async_refresh()
+    assert entry.runtime_data.pending == {}
+
+
+async def test_poll_older_than_write_does_not_rewrite(hass: HomeAssistant) -> None:
+    """A poll that read before the write finished must not write again."""
+    dev = fake_device()
+    entry, _ = await _setup(hass, dev)
+    coordinator = entry.runtime_data
+    stale = await coordinator.api.get_state()  # read before the write
+    read_started = 0.0
+    await _press(hass, "turn_on", "switch.bahce_alarm")
+    assert len(_writes(dev)) == 1
+    await coordinator._async_verify_and_retry(stale, read_started)
+    assert len(_writes(dev)) == 1
+    assert coordinator.pending == {"enabled": True}
