@@ -106,7 +106,20 @@ class TapoAlarmApi:
 
     async def _query(self, request: dict[str, Any]) -> dict[str, Any]:
         async with self._lock:
-            return await self.device.protocol.query(request)
+            try:
+                return await self.device.protocol.query(request)
+            except KasaException as err:
+                # Cameras end the session every ~12 minutes and answer the
+                # next request with HTTP 401. python-kasa resets the session
+                # but does not retry, so retry once with a fresh login.
+                # Subclasses (auth, device error codes, connection errors,
+                # timeouts) are final or already retried by python-kasa.
+                if type(err) is not KasaException:
+                    raise
+                _LOGGER.debug(
+                    "Retrying %s with a new session: %s", self.device.host, err
+                )
+                return await self.device.protocol.query(request)
 
     async def _call(self, method: str, params: dict[str, Any]) -> None:
         resp = await self._query({method: params})

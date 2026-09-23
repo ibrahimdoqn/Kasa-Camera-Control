@@ -7,7 +7,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
-from kasa.exceptions import SmartErrorCode
+from kasa.exceptions import DeviceError, SmartErrorCode
 
 from custom_components.tapo_kasa_alarm.const import DOMAIN
 
@@ -190,3 +190,41 @@ async def test_alert_config_firmware(hass: HomeAssistant) -> None:
     dev.protocol.requests.clear()
     await entry.runtime_data.async_refresh()
     assert [next(iter(r)) for r in dev.protocol.requests] == ["getAlertConfig"]
+
+
+async def test_retry_after_session_expired() -> None:
+    """A 401 from an expired camera session is retried once, errors are not."""
+    from kasa import KasaException
+
+    from custom_components.tapo_kasa_alarm.api import TapoAlarmApi
+
+    dev = fake_device()
+    proto = dev.protocol
+    real_query = proto.query
+    calls = {"n": 0}
+
+    async def expired_once(request):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise KasaException(
+                "192.168.31.8 responded with an unexpected status code 401 to passthrough"
+            )
+        return await real_query(request)
+
+    proto.query = expired_once
+    api = TapoAlarmApi(dev)
+    state = await api.get_state()
+    assert state["alarm"]["enabled"] == "off"
+    assert calls["n"] == 2
+
+    async def device_error(request):
+        calls["n"] += 1
+        raise DeviceError("INVALID_ARGUMENTS")
+
+    proto.query = device_error
+    calls["n"] = 0
+    try:
+        await api.set_notifications(True)
+    except DeviceError:
+        pass
+    assert calls["n"] == 1
