@@ -38,7 +38,7 @@
         },
         "data_description": {
           "scan_interval": "TP-Link entegrasyonu 5 saniyede bir sorgular.",
-          "session_renew": "Kameralar oturumu girişten yaklaşık 10 dakika sonra kapatır ve anahtarlar bir an \"kullanılamıyor\" olur. Entegrasyon bundan önce yeniden giriş yapar. 0 kapatır.",
+          "session_renew": "Kameralar oturumu girişten yaklaşık 10 dakika sonra kapatır ve sonraki istek bir kez başarısız olur. Entegrasyon bundan önce yeniden giriş yapar. 0 kapatır.",
           "discovery": "TP-Link entegrasyonundaki gibi, açılışta ve 15 dakikada bir kamerayı MAC adresiyle arar. Kameranın sabit IP'si varsa kapatın."
         }
       }
