@@ -1,8 +1,9 @@
 """Thin wrapper around python-kasa for the Tapo camera alarm endpoints.
 
 python-kasa is the library used by Home Assistant's built-in TP-Link
-integration. Only a single session is kept open per camera and every
-request is serialized, so the camera never sees parallel logins.
+integration, and the camera is connected the same way that integration
+does it. Only a single session is kept open per camera and every request
+is serialized, so the camera never sees parallel logins.
 """
 
 from __future__ import annotations
@@ -11,6 +12,7 @@ import asyncio
 import logging
 from typing import Any
 
+from aiohttp import ClientSession
 from kasa import (
     AuthenticationError,
     Credentials,
@@ -24,31 +26,70 @@ from kasa import (
 )
 from kasa.exceptions import SmartErrorCode
 
-from .const import ALARM_SECTION, DEFAULT_TIMEOUT, MODE_LIGHT, MODE_SOUND, PUSH_SECTION
+from .const import (
+    ALARM_SECTION,
+    DEFAULT_TIMEOUT,
+    DISCOVERY_TIMEOUT,
+    MODE_LIGHT,
+    MODE_SOUND,
+    PUSH_SECTION,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
-__all__ = ["AuthenticationError", "KasaException", "TapoAlarmApi", "connect_device"]
+__all__ = [
+    "AuthenticationError",
+    "KasaException",
+    "TapoAlarmApi",
+    "connect_device",
+    "discover_macs",
+]
 
 
-async def connect_device(host: str, username: str, password: str) -> Device:
-    """Connect to a Tapo camera the same way the TP-Link integration does."""
+DEFAULT_CONNECTION = DeviceConnectionParameters(
+    device_family=DeviceFamily.SmartIpCamera,
+    encryption_type=DeviceEncryptionType.Aes,
+    https=True,
+)
+
+
+async def connect_device(
+    host: str,
+    username: str,
+    password: str,
+    *,
+    http_client: ClientSession | None = None,
+    connection_parameters: dict[str, Any] | None = None,
+) -> Device:
+    """Connect to a Tapo camera the same way the TP-Link integration does.
+
+    The stored connection parameters (saved after the first successful
+    connection) are used directly; discovery is only a fallback when the
+    camera does not accept the default camera parameters.
+    """
     credentials = Credentials(username, password)
+    connection_type = DEFAULT_CONNECTION
+    if connection_parameters:
+        try:
+            connection_type = DeviceConnectionParameters.from_dict(connection_parameters)
+        except (KasaException, TypeError, ValueError, LookupError):
+            _LOGGER.warning(
+                "Invalid connection parameters for %s: %s", host, connection_parameters
+            )
     config = DeviceConfig(
         host=host,
         credentials=credentials,
         timeout=DEFAULT_TIMEOUT,
-        connection_type=DeviceConnectionParameters(
-            device_family=DeviceFamily.SmartIpCamera,
-            encryption_type=DeviceEncryptionType.Aes,
-            https=True,
-        ),
+        connection_type=connection_type,
+        http_client=http_client,
     )
     try:
         return await Device.connect(config=config)
     except AuthenticationError:
         raise
     except KasaException as err:
+        if connection_parameters:
+            raise
         _LOGGER.debug("Direct camera connect to %s failed (%s), trying discovery", host, err)
 
     device = await Discover.discover_single(
@@ -58,6 +99,34 @@ async def connect_device(host: str, username: str, password: str) -> Device:
         raise KasaException(f"Device {host} not found")
     await device.update()
     return device
+
+
+async def discover_macs(broadcast_addresses: list[str]) -> dict[str, str]:
+    """Return {mac: host} of TP-Link devices answering the UDP discovery.
+
+    Discovery only listens for the devices' broadcast answers; it does not
+    log in to anything (the same discovery the TP-Link integration runs).
+    """
+    found: dict[str, str] = {}
+    results = await asyncio.gather(
+        *(
+            Discover.discover(target=address, discovery_timeout=DISCOVERY_TIMEOUT)
+            for address in broadcast_addresses
+        ),
+        return_exceptions=True,
+    )
+    for result in results:
+        if isinstance(result, BaseException):
+            _LOGGER.debug("Discovery failed: %s", result)
+            continue
+        for device in result.values():
+            try:
+                if device.mac:
+                    found[device.mac] = device.host
+            except Exception:  # noqa: BLE001 - one odd device must not stop discovery
+                _LOGGER.debug("No MAC in discovery answer from %s", device.host)
+            await device.protocol.close()
+    return found
 
 
 # The calls Tapo Control uses to read the alarm config, tried in this order.

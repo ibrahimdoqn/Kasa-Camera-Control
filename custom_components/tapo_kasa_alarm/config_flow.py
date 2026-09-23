@@ -6,6 +6,7 @@ from collections.abc import Mapping
 import logging
 from typing import Any
 
+from kasa.httpclient import get_cookie_jar
 import voluptuous as vol
 
 from homeassistant.config_entries import (
@@ -15,21 +16,41 @@ from homeassistant.config_entries import (
     OptionsFlow,
 )
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
-from homeassistant.core import callback
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.device_registry import format_mac
 
 from .api import AuthenticationError, KasaException, connect_device
-from .const import CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL, DOMAIN, MIN_SCAN_INTERVAL
+from .const import (
+    CONF_CONNECTION_PARAMETERS,
+    CONF_SCAN_INTERVAL,
+    DEFAULT_SCAN_INTERVAL,
+    DOMAIN,
+    MIN_SCAN_INTERVAL,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
 
-async def _validate(host: str, username: str, password: str) -> tuple[str, str]:
-    """Connect once and return (unique_id, title)."""
-    device = await connect_device(host, username, password)
+async def _validate(
+    hass: HomeAssistant, host: str, username: str, password: str
+) -> tuple[str, str, dict[str, Any]]:
+    """Connect once and return (unique_id, title, connection parameters)."""
+    device = await connect_device(
+        host,
+        username,
+        password,
+        http_client=async_create_clientsession(
+            hass, verify_ssl=False, cookie_jar=get_cookie_jar()
+        ),
+    )
     try:
         uid = format_mac(device.mac) if device.mac else device.device_id
-        return str(uid), device.alias or device.model or host
+        return (
+            str(uid),
+            device.alias or device.model or host,
+            device.config.connection_type.to_dict(),
+        )
     finally:
         await device.disconnect()
 
@@ -45,7 +66,8 @@ class TapoAlarmConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
         if user_input is not None:
             try:
-                uid, title = await _validate(
+                uid, title, connection_parameters = await _validate(
+                    self.hass,
                     user_input[CONF_HOST],
                     user_input[CONF_USERNAME],
                     user_input[CONF_PASSWORD],
@@ -62,7 +84,13 @@ class TapoAlarmConfigFlow(ConfigFlow, domain=DOMAIN):
                 self._abort_if_unique_id_configured(
                     updates={CONF_HOST: user_input[CONF_HOST]}
                 )
-                return self.async_create_entry(title=title, data=user_input)
+                return self.async_create_entry(
+                    title=title,
+                    data={
+                        **user_input,
+                        CONF_CONNECTION_PARAMETERS: connection_parameters,
+                    },
+                )
 
         return self.async_show_form(
             step_id="user",
@@ -92,6 +120,7 @@ class TapoAlarmConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             try:
                 await _validate(
+                    self.hass,
                     entry.data[CONF_HOST],
                     user_input[CONF_USERNAME],
                     user_input[CONF_PASSWORD],

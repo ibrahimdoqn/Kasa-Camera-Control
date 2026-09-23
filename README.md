@@ -47,6 +47,11 @@ C520WS ve C510W için yazıldı. `msg_alarm` destekleyen diğer Tapo kameralarda
 - Kameraya bir kez giriş yapılır ve oturum açık tutulur. Her sorguda yeniden giriş yapılmaz.
 - Oturumun süresi dolarsa python-kasa kendisi yeniden giriş yapar.
 
+**Kamera IP değiştirirse**
+- Üst üste 3 sorgu cevapsız kalırsa kamera ağda MAC adresiyle aranır. Yeni IP'de bulunursa kaydedilir ve entegrasyon yeni adresle yeniden bağlanır.
+- Bu arama en fazla 15 dakikada bir yapılır. Kamera hata koduyla cevap veriyorsa ulaşılabilir demektir, arama yapılmaz.
+- Açılışta kameraya bağlanılamazsa veya o IP'de başka bir cihaz çıkarsa da aynı arama yapılır.
+
 **Birden fazla kamera**
 - Her kameranın kendi zamanlayıcısı ve kilidi vardır. Kameralar birbirini beklemez, ama her biri kendi içinde sıralı çalışır.
 
@@ -56,7 +61,14 @@ C520WS ve C510W için yazıldı. `msg_alarm` destekleyen diğer Tapo kameralarda
 
 ## python-kasa ve resmi TP-Link entegrasyonu
 - Entegrasyon, Home Assistant'ın resmi TP-Link entegrasyonunun kullandığı **python-kasa** kütüphanesini kullanır. Bu kütüphane Home Assistant ile birlikte kurulu gelir, ayrıca bir şey indirilmez.
-- Resmi TP-Link entegrasyonunun kendisini kullanmaz. Kameraya kendi bağlantısını açar ve TP-Link entegrasyonunun kurulu olmasını gerektirmez.
+- Resmi TP-Link entegrasyonunun kendisini kullanmaz ve onun kurulu olmasını gerektirmez. Ama kameraya **TP-Link entegrasyonunun bağlandığı gibi** bağlanır:
+  - **HTTP oturumu:** Home Assistant'ın yönettiği HTTP oturumu, TP-Link entegrasyonundaki ayarlarla kullanılır.
+  - **Kaydedilmiş bağlantı ayarları:** İlk başarılı bağlantıda kameranın bağlantı türü kaydedilir. Sonraki açılışlarda kamera doğrudan bu ayarlarla bağlanır, tahmin veya keşif yapılmaz.
+  - **MAC kontrolü:** Bağlanılan cihazın MAC adresi kayıtlı kamerayla karşılaştırılır. IP adresinde başka bir cihaz varsa kullanılmaz, kameralar karışmaz.
+  - **IP değişikliği:** Kameraya ulaşılamazsa, kamera ağda MAC adresiyle aranır ve yeni IP adresi kaydedilir. Bu arama TP-Link entegrasyonunun keşfiyle aynıdır: yalnızca ağa bir yayın gönderir, hiçbir cihaza giriş yapmaz.
+- Bilerek farklı bırakılanlar:
+  - TP-Link kamerayı 5 saniyede bir tüm bilgileriyle sorgular. Bu entegrasyon dakikada bir yalnızca alarm ve bildirim ayarını okur.
+  - Kameranın oturumu kapattığı `401` cevabında istek yeni girişle bir kez daha denenir. TP-Link bunu yapmaz ve o sorguyu başarısız sayar.
 - Aynı kamera hem TP-Link entegrasyonuna hem bu entegrasyona ekliyse kameraya iki ayrı oturum açılır.
 
 ## Varlıklar
