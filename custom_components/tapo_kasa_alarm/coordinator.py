@@ -19,7 +19,10 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class TapoAlarmCoordinator(DataUpdateCoordinator[dict[str, Any]]):
-    """Poll the camera like the TP-Link integration, plus the alarm config.
+    """Poll the alarm and notification config, like the TP-Link coordinator.
+
+    Only what the entities use is read: one request per poll. The full
+    device.update() the TP-Link integration polls is not needed here.
 
     data = {"alarm": {...}, "push": {...} | None}
     """
@@ -43,7 +46,6 @@ class TapoAlarmCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _async_update_data(self) -> dict[str, Any]:
         try:
-            await self.api.update()
             return await self.api.get_state()
         except AuthenticationError as err:
             raise ConfigEntryAuthFailed(f"Authentication failed on update: {err}") from err

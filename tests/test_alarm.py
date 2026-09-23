@@ -142,10 +142,17 @@ async def test_setup_and_toggle(hass: HomeAssistant) -> None:
     await refresh_after_command(hass)
     assert hass.states.get("switch.bahce_notifications").state == "off"
 
-    # Polls like TP-Link: full device update, then the alarm config.
+    # Every 5 seconds, one request with only the alarm and notification config.
     dev.update.reset_mock()
+    dev.protocol.requests.clear()
     await entry.runtime_data.async_refresh()
-    dev.update.assert_awaited_once()
+    dev.update.assert_not_awaited()
+    assert dev.protocol.requests == [
+        {
+            "getLastAlarmInfo": {"msg_alarm": {"name": ["chn1_msg_alarm_info"]}},
+            "getMsgPushConfig": {"msg_push": {"name": ["chn1_msg_push_info"]}},
+        }
+    ]
     assert entry.runtime_data.update_interval == timedelta(seconds=5)
 
     await hass.services.async_call(

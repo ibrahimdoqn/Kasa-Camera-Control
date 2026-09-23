@@ -5,7 +5,7 @@
 Tapo kameraların **otomatik alarm** ve **bildirim** ayarlarını Home Assistant'tan açıp kapatan bir HACS entegrasyonu.
 
 - `pytapo` yerine, Home Assistant'ın resmi **TP-Link Smart Home** entegrasyonunun kullandığı **python-kasa** kütüphanesini kullanır.
-- Kameraya resmi TP-Link entegrasyonunun bağlandığı ve sorguladığı gibi bağlanır ve sorgular.
+- Kameraya resmi TP-Link entegrasyonunun bağlandığı gibi bağlanır. Her sorguda yalnızca alarm ve bildirim ayarını, tek bir istekle okur.
 - Resmi entegrasyonda olmayan otomatik alarm ve bildirim anahtarlarını ekler.
 
 C520WS ve C510W için yazıldı. `msg_alarm` destekleyen diğer Tapo kameralarda da çalışmalı.
@@ -64,7 +64,7 @@ automation:
 ```
 
 ## Nasıl çalışıyor
-Entegrasyon, Home Assistant'ın resmi TP-Link entegrasyonunun kodu örnek alınarak yazıldı. Kameraya onunla aynı şekilde bağlanır ve onunla aynı sıklıkta sorgular.
+Entegrasyon, Home Assistant'ın resmi TP-Link entegrasyonunun kodu örnek alınarak yazıldı. Kameraya onunla aynı şekilde bağlanır ve onunla aynı sıklıkta (5 saniye) sorgular. Ama yalnızca kendi kullandığı bilgiyi okur.
 
 ### Bağlantı
 - **python-kasa:** Home Assistant ile birlikte kurulu gelir, ayrıca bir şey indirilmez.
@@ -75,8 +75,9 @@ Entegrasyon, Home Assistant'ın resmi TP-Link entegrasyonunun kodu örnek alına
 - Kamera başına **tek oturum** açık tutulur. Kamera oturumu kapatırsa python-kasa bir sonraki sorguda yeniden giriş yapar.
 
 ### Sorgulama
-- 5 saniyede bir, TP-Link'teki gibi kameranın tam güncellemesi (`device.update()`) yapılır.
-- Ardından alarm ve bildirim ayarı tek bir istekte okunur. TP-Link bu ayarları okumadığı için bu istek ek olarak gider.
+- 5 saniyede bir, TP-Link'teki gibi sorgulanır.
+- Her sorguda kameraya **tek bir istek** gider: alarm ayarı ve bildirim ayarı birlikte okunur.
+- TP-Link her sorguda kameranın tam güncellemesini yapar: hareket algılama, LED, gizlilik modu, saat gibi kendi varlıklarının bilgilerini okur. python-kasa bunları en fazla 5 soruluk paketlere böldüğü için bu genelde 2–3 istek demektir. Bu entegrasyon o bilgileri kullanmadığı için tam güncellemeyi yapmaz; kameraya TP-Link'ten daha az istek gider.
 - Her kamera için bir kilit vardır. İstekler sırayla gider, kameraya aynı anda asla iki istek gitmez.
 - Her kameranın kendi zamanlayıcısı vardır. Kameralar birbirini beklemez.
 
@@ -107,6 +108,7 @@ TP-Link entegrasyonundaki gibi:
 
 ### TP-Link'ten farkları
 - Alarm, alarm sesi/ışığı ve bildirim anahtarları ile kameralar için yeniden başlatma düğmesi. TP-Link'te bunlar yok.
+- Her sorguda tam güncelleme yerine yalnızca alarm ve bildirim ayarı okunur (1 istek; TP-Link'te genelde 2–3).
 - Sorgulama aralığı ve MAC ile arama seçenekten değiştirilebilir. TP-Link'te bu ayarlar sabittir; varsayılanlar TP-Link'inkilerle aynıdır.
 - Aynı kamera hem TP-Link entegrasyonuna hem bu entegrasyona ekliyse kameraya iki ayrı oturum açılır.
 

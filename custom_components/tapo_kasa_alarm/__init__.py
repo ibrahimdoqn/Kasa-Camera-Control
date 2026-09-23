@@ -1,10 +1,11 @@
 """Kasa Camera Control: Tapo camera alarm control via python-kasa.
 
-The camera is connected and polled the same way Home Assistant's TP-Link
-integration does it: a Home Assistant managed HTTP session, the connection
+The camera is connected the same way Home Assistant's TP-Link integration
+does it: a Home Assistant managed HTTP session, the connection
 parameters saved from the first successful connection, a MAC check so a
-changed DHCP lease never mixes up cameras, a full device update every 5
-seconds and UDP discovery to follow a camera to a new IP address.
+changed DHCP lease never mixes up cameras, polling every 5 seconds and
+UDP discovery to follow a camera to a new IP address. Each poll reads
+only the alarm and notification config, in a single request.
 """
 
 from __future__ import annotations

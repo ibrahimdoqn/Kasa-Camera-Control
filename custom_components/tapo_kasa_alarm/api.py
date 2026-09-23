@@ -177,11 +177,6 @@ class TapoAlarmApi:
         async with self._lock:
             return await self.device.protocol.query(request)
 
-    async def update(self) -> None:
-        """Full device update, the same call the TP-Link integration polls."""
-        async with self._lock:
-            await self.device.update()
-
     async def reboot(self) -> None:
         """Reboot the camera (the call Tapo Control uses for cameras).
 
