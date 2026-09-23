@@ -15,6 +15,50 @@ C520WS ve C510W için yazıldı. `msg_alarm` destekleyen diğer Tapo kameralarda
 - Her sorgulamada yalnızca alarm ve bildirim ayarı tek bir istekte okunur. Varsayılan aralık 60 sn, seçeneklerden değiştirilebilir (en az 15 sn).
 - Görüntü akışı, ONVIF, anlık görüntü, olay dinleme, güncelleme kontrolü **yoktur**.
 
+## Sorgulama nasıl çalışıyor
+
+**Her sorgulama tek bir istek**
+- Varsayılan olarak 60 saniyede bir sorgu yapılır. Süre seçeneklerden değiştirilebilir, en az 15 saniye.
+- Her sorguda kameraya tek bir HTTPS isteği gider. Alarm ayarı ve bildirim ayarı bu isteğin içinde birlikte okunur.
+- İki sorgu arasında kameraya hiçbir istek gitmez.
+
+**Sıralama ve bekleme**
+- Her kamera için bir kilit vardır. Bir istek bitmeden aynı kameraya ikinci istek başlamaz.
+- Sorgulama sürerken bir anahtara basılırsa, yazma isteği sorgulamanın bitmesini bekler, sonra gider.
+- Home Assistant bir sorgu bitmeden yenisini başlatmaz.
+- Normal çalışmada yapay bir bekleme yoktur.
+
+**Anahtara basınca**
+- Tek bir yazma isteği gider.
+- Yazmadan sonra ayrıca okuma yapılmaz. Yeni durum doğrudan yazılan değerden yansır ve sıradaki sorgu zamanı baştan sayılır.
+
+**İlk açılışta**
+- Kamera modeline ve yazılımına göre alarm ayarı farklı komutlarla okunur (`getLastAlarmInfo`, `getAlertConfig`, `getAlarmConfig`).
+- Hangisinin desteklendiği bilinmiyorsa bu üç komut sırayla, birer istek olarak denenir. Çalışan komut hatırlanır, sonraki sorgular yalnızca onu kullanır.
+- Bu deneme Home Assistant her açıldığında veya entegrasyon yeniden yüklendiğinde bir kez olur.
+
+**Hata olursa**
+- Her istek için 10 saniyelik zaman aşımı vardır.
+- python-kasa bağlantı hatası veya zaman aşımında aynı isteği en fazla 3 kez daha dener. Zaman aşımından sonra denemeler arasında 1 saniye bekler. Kimlik doğrulama hatasında tekrar denemez.
+- Sorgu yine de başarısız olursa anahtarlar "kullanılamıyor" görünür ve bir sonraki sorgu zamanı beklenir. Hızlı art arda deneme yoktur.
+- Kötü durumda tek bir sorgu kameraya en fazla 4 deneme olarak gidebilir. Bu denemeler de sıralıdır.
+
+**Oturum**
+- Kameraya bir kez giriş yapılır ve oturum açık tutulur. Her sorguda yeniden giriş yapılmaz.
+- Oturumun süresi dolarsa python-kasa kendisi yeniden giriş yapar.
+
+**Birden fazla kamera**
+- Her kameranın kendi zamanlayıcısı ve kilidi vardır. Kameralar birbirini beklemez, ama her biri kendi içinde sıralı çalışır.
+
+**Kamera zorlanırsa**
+- Sorgulama aralığını 120 veya 300 saniyeye çıkarın.
+- Bunun tek bedeli, alarm Tapo uygulamasından değiştirildiğinde Home Assistant'ın bunu daha geç görmesidir. Home Assistant'tan yapılan değişiklikler anında yansır.
+
+## python-kasa ve resmi TP-Link entegrasyonu
+- Entegrasyon, Home Assistant'ın resmi TP-Link entegrasyonunun kullandığı **python-kasa** kütüphanesini kullanır. Bu kütüphane Home Assistant ile birlikte kurulu gelir, ayrıca bir şey indirilmez.
+- Resmi TP-Link entegrasyonunun kendisini kullanmaz. Kameraya kendi bağlantısını açar ve TP-Link entegrasyonunun kurulu olmasını gerektirmez.
+- Aynı kamera hem TP-Link entegrasyonuna hem bu entegrasyona ekliyse kameraya iki ayrı oturum açılır.
+
 ## Varlıklar
 | Varlık | Açıklama |
 |---|---|
