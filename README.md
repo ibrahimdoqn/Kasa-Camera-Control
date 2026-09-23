@@ -10,6 +10,8 @@ Tapo kameraların **otomatik alarm** ve **bildirim** ayarlarını Home Assistant
 
 C520WS ve C510W için yazıldı. `msg_alarm` destekleyen diğer Tapo kameralarda da çalışmalı.
 
+Tamamen **yerel** çalışır: kameralarla ev ağı içinden konuşur, TP-Link bulutuna istek göndermez. Ayrıntılar için [Yerel çalışma](#yerel-çalışma) bölümüne bakın.
+
 ## Varlıklar
 | Varlık | Açıklama |
 |---|---|
@@ -48,6 +50,22 @@ Ayarlar → Cihazlar ve Hizmetler → **Kasa Camera Control** → kamera → **Y
 
 - **Sorgulama aralığı (saniye):** Varsayılan 5, TP-Link entegrasyonuyla aynı. En az 5. Değişiklik kameraya yeniden bağlanmadan uygulanır.
 - **IP değişirse kamerayı bul (MAC ile arama):** Varsayılan açık, TP-Link entegrasyonundaki gibi. Kamera açılışta ve 15 dakikada bir ağda MAC adresiyle aranır; IP'si değişmişse yeni adres kaydedilir. Sabit IP kullanıyorsanız kapatın; kapalıyken ağa hiç arama yayını gönderilmez.
+
+## Yerel çalışma
+Entegrasyon kameralarla doğrudan ev ağınızın içinde konuşur ve TP-Link bulutuna hiçbir istek göndermez (`local_polling`).
+
+- **Kamera bağlantısı:** Home Assistant kameraya doğrudan IP adresinden, ev ağı içinde HTTPS ile bağlanır.
+- **Alarm, bildirim ve yeniden başlatma:** Hepsi bu yerel bağlantı üzerinden gider.
+- **MAC ile IP arama:** Yalnızca ev ağına bir yayın gönderir, internete çıkmaz.
+
+**TP-Link hesabı neden isteniyor?** Tapo kameralar yerel girişte de TP-Link hesabının e-posta ve şifresini kullanır. Kamera, Tapo uygulamasıyla kurulurken bu bilgilerin şifrelenmiş bir kopyasını kendi içinde saklar. Entegrasyon girişi kameranın kendisine yapar, TP-Link sunucularına değil.
+
+**İnternet kesilirse:** Alarm ve bildirim anahtarları çalışmaya devam eder.
+- İstisna: TP-Link hesabınızın şifresini değiştirirseniz kamera yeni şifreyi internet üzerinden öğrenir. Sonra Home Assistant sizden yeni şifreyi ister.
+
+**Bulutla ilişkili tek şey:** Bildirimler anahtarı kameranın bildirim gönderip göndermeyeceğini yerel olarak ayarlar. Bildirimlerin telefona ulaşması ise Tapo'nun kendi bulutu üzerinden olur; bu, Tapo uygulamasının kendi işleyişidir.
+
+HACS'ın entegrasyonu GitHub'dan indirip güncellemesi dışında, günlük çalışmada hiçbir şey internete gitmez.
 
 ## Otomasyon örneği
 ```yaml
@@ -114,6 +132,15 @@ TP-Link entegrasyonundaki gibi:
 
 ## Sorun giderme
 - **Anahtarlar sık sık "kullanılamıyor" oluyor:** Log'da `Connect call failed` veya `TimeoutError` varsa kamera o anda ağda değildir (Wi-Fi kopması veya yeniden başlama). Home Assistant'ın **Ping** entegrasyonuyla kameranın IP'si için bir sensör ekleyin; ping de düşüyorsa sorun Wi-Fi'da veya kameradadır. Tapo uygulamasından kameranın sinyal gücüne bakın.
+- **Anahtarlar birkaç saniyeliğine "kullanılamıyor" olup geri geliyor:** Kamera oturumu kapattığında log'da `401` hatası görünür ve o sorgu başarısız sayılır; python-kasa bir sonraki sorguda (5 saniye sonra) yeniden giriş yapar. Resmi TP-Link entegrasyonu da böyle davranır.
+- **Otomasyon "kullanılamıyor"dan dönünce tetikleniyor:** Anahtar "kullanılamıyor"dan tekrar "açık"a döndüğünde durum değişikliğine bağlı bir otomasyon tetiklenebilir. Tetikleyiciye `not_from: unavailable` ekleyin:
+  ```yaml
+  triggers:
+    - trigger: state
+      entity_id: switch.bahce_alarm
+      to: "on"
+      not_from: unavailable
+  ```
 - **Kamera zorlanıyor gibi:** Sorgulama aralığını 30 veya 60 saniyeye çıkarın. Bunun tek bedeli, kamerada yapılan değişikliklerin (örneğin Tapo uygulamasından) Home Assistant'ta daha geç görünmesidir.
 - **Ayrıntılı log:** `configuration.yaml` dosyasına ekleyip Home Assistant'ı yeniden başlatın:
   ```yaml
