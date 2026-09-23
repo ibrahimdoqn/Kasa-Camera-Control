@@ -95,11 +95,22 @@ Entegrasyon, Home Assistant'ın resmi TP-Link entegrasyonunun kodu örnek alına
 
 ### Oturum yenileme
 - Kameralar oturumu girişten yaklaşık **10 dakika** sonra, trafik olsa da olmasa da kapatır ve sonraki isteğe `401` ile cevap verir. python-kasa bunu ancak bir istek başarısız olunca fark eder.
-- Resmi TP-Link entegrasyonunda bu durumda hiçbir şey "kullanılamıyor" olmaz: python-kasa'nın tam güncellemesi başarısız olan soruları yeni girişle tek tek tekrar sorar (bkz. [Hata olursa](#hata-olursa)). Bu entegrasyon da aynısını yapar. Ama log'a her seferinde bir hata yazılır.
-- Bu hatayı hiç oluşturmamak için entegrasyon oturumu süre dolmadan, varsayılan olarak **8 dakikada bir** kendisi yeniler: eski oturumu bırakır ve bir sonraki istekte yeniden giriş yapılır.
+- Resmi TP-Link entegrasyonunda bu durumda hiçbir şey "kullanılamıyor" olmaz: python-kasa'nın tam güncellemesi başarısız olan soruları yeni girişle tek tek tekrar sorar (bkz. [Hata olursa](#hata-olursa)). Bu entegrasyon da aynısını yapar. Ama o sorgu önce başarısız olur ve log'a bir kayıt düşer (TP-Link'te hata, burada uyarı).
+- Bunu hiç yaşamamak için entegrasyon oturumu süre dolmadan, varsayılan olarak **8 dakikada bir** kendisi yeniler: eski oturumu bırakır ve hemen yeniden giriş yapar.
 - Tapo kameralarda "çıkış yap" komutu yoktur; bırakılan oturumu kamera kendi süresi dolunca siler. Eski oturumla bir daha istek gönderilmez.
 - Yenileme yalnızca kamera oturumunu sıfırlar; Home Assistant'ın ortak HTTP bağlantısı açık kalır.
 - Aralık seçeneklerden değiştirilebilir; 0 yenilemeyi kapatır. TP-Link'te bu özellik yoktur.
+
+**Ne zaman ve nasıl oluyor:**
+- Son girişin üzerinden 8 dakika geçtikten sonraki **ilk sorguda** olur. Sorgulama 5 saniyede bir olduğu için pratikte 8 dakika ile 8 dakika 5 saniye arasıdır.
+- Yenileme o sorgunun içinde yapılır: eski oturum bırakılır, yeniden giriş yapılır (kameraya 2 kısa istek) ve asıl sorgu yeni oturumla gider. Home Assistant bunu normal bir sorgu olarak görür; geçiş sırasında hiçbir şey "kullanılamıyor" olmaz. Sorgu yalnızca saniyenin bir kesri kadar uzar.
+- Yenileme, istekleri sıraya koyan kilidin içinde yapılır. Tam o sırada bir anahtara basılırsa komut girişin bitmesini bekler ve yeni oturumla gider; eski oturumla hiçbir istek gitmez.
+- Kameralar yalnızca art arda **başarısız** girişlerde hesabı geçici olarak kilitler. 8 dakikada bir yapılan başarılı giriş sorun değildir.
+
+**Kurtarma ile birlikte:**
+- Kamera oturumu yine de erken kapatırsa (`401`), sorular yeni girişle tekrar sorulur ve anahtarlar kullanılabilir kalır (bkz. [Hata olursa](#hata-olursa)).
+- Böyle bir kurtarmadan sonra yenileme sayacı sıfırlanmaz; bir sonraki yenileme gereğinden biraz erken olabilir. Zararı yoktur: oturum hiçbir zaman entegrasyonun sandığından eski olmaz.
+- Yeniden giriş tam o anda başarısız olursa (örneğin kamera o saniye ağdan düşmüşse) o sorgu başarısız olur ve anahtarlar bir sonraki sorguya kadar "kullanılamıyor" görünür. Bu, yenilemeden değil o anki bağlantı sorunundan kaynaklanır.
 
 ### Sorgulama
 - 5 saniyede bir, TP-Link'teki gibi sorgulanır.
@@ -145,7 +156,7 @@ TP-Link entegrasyonundaki gibi:
 ## Sorun giderme
 - **Anahtarlar sık sık "kullanılamıyor" oluyor:** Log'da `Connect call failed` veya `TimeoutError` varsa kamera o anda ağda değildir (Wi-Fi kopması veya yeniden başlama). Home Assistant'ın **Ping** entegrasyonuyla kameranın IP'si için bir sensör ekleyin; ping de düşüyorsa sorun Wi-Fi'da veya kameradadır. Tapo uygulamasından kameranın sinyal gücüne bakın.
 - **Log'da `401` uyarısı var:** Kamera oturumu yenilemeden önce kapatmış demektir. Anahtarlar kullanılabilir kalır, çünkü sorular yeni girişle tekrar sorulur. Uyarılar sık geliyorsa seçeneklerden **oturumu yenileme aralığını** düşürün (örneğin 5 dakika). Yenileme kapalıysa (0) bu uyarı her 10 dakikada bir beklenir.
-- **Otomasyon "kullanılamıyor"dan dönünce tetikleniyor:** Anahtar "kullanılamıyor"dan tekrar "açık"a döndüğünde durum değişikliğine bağlı bir otomasyon tetiklenebilir. Tetikleyiciye `not_from: unavailable` ekleyin:
+- **Otomasyon "kullanılamıyor"dan dönünce tetikleniyor:** Kamera ağdan düştüğünde anahtarlar "kullanılamıyor" olur. Anahtar "kullanılamıyor"dan tekrar "açık"a döndüğünde durum değişikliğine bağlı bir otomasyon tetiklenebilir. Tetikleyiciye `not_from: unavailable` ekleyin:
   ```yaml
   triggers:
     - trigger: state
