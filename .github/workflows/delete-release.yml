@@ -1,11 +1,10 @@
-name: Delete release
+name: Delete withdrawn releases
 
 on:
+  push:
+    branches: [main]
+    paths: [.github/withdrawn-releases.txt]
   workflow_dispatch:
-    inputs:
-      tag:
-        description: "Release tag to delete together with its git tag (e.g. v1.7.0)"
-        required: true
 
 permissions:
   contents: write
@@ -14,9 +13,20 @@ jobs:
   delete:
     runs-on: ubuntu-latest
     steps:
-      - name: Delete release and tag
+      - uses: actions/checkout@v4
+
+      - name: Delete listed releases and their tags
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ inputs.tag }}
         run: |
-          gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
+          grep -v '^\s*#' .github/withdrawn-releases.txt | grep -v '^\s*$' | while read -r tag; do
+            if gh release view "$tag" >/dev/null 2>&1; then
+              echo "Deleting release $tag"
+              gh release delete "$tag" --cleanup-tag --yes
+            elif git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
+              echo "Deleting tag $tag"
+              git push origin ":refs/tags/$tag"
+            else
+              echo "$tag already deleted"
+            fi
+          done
