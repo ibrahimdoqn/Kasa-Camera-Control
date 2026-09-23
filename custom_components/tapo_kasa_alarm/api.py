@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from typing import Any
 
 from aiohttp import ClientSession
@@ -168,14 +169,36 @@ def _unwrap(resp: dict[str, Any], method: str) -> dict[str, Any]:
 class TapoAlarmApi:
     """Alarm related calls on top of a connected python-kasa device."""
 
-    def __init__(self, device: Device) -> None:
+    def __init__(self, device: Device, session_renew_minutes: float = 0) -> None:
         self.device = device
         self._lock = asyncio.Lock()
         self._variant: str | None = None
+        # The device was just connected, so a fresh session exists.
+        self._session_started = time.monotonic()
+        self.session_renew_minutes = session_renew_minutes
 
     async def _query(self, request: dict[str, Any]) -> dict[str, Any]:
         async with self._lock:
+            await self._renew_session_if_due()
             return await self.device.protocol.query(request)
+
+    async def _renew_session_if_due(self) -> None:
+        """Log in again before the camera ends the session.
+
+        Cameras end the session about 10 minutes after login and answer the
+        next request with HTTP 401. Closing the protocol drops the old
+        session (cameras have no logout call; the camera expires it) and
+        python-kasa logs in again on the next request. The Home Assistant
+        HTTP session is not closed, python-kasa only closes its own.
+        """
+        if not self.session_renew_minutes:
+            return
+        now = time.monotonic()
+        if now - self._session_started < self.session_renew_minutes * 60:
+            return
+        _LOGGER.debug("Renewing the session with %s", self.device.host)
+        await self.device.protocol.close()
+        self._session_started = now
 
     async def reboot(self) -> None:
         """Reboot the camera (the call Tapo Control uses for cameras).

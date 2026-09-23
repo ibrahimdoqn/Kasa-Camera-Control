@@ -33,10 +33,12 @@
       "init": {
         "data": {
           "scan_interval": "Polling interval (seconds)",
+          "session_renew": "Renew the session every (minutes)",
           "discovery": "Follow the camera to a new IP address (MAC discovery)"
         },
         "data_description": {
           "scan_interval": "The TP-Link integration polls every 5 seconds.",
+          "session_renew": "The cameras end the session about 10 minutes after login, which makes the switches unavailable for a moment. The integration logs in again before that. 0 turns it off.",
           "discovery": "Looks for the camera by MAC address at start and every 15 minutes, like the TP-Link integration. Turn off if the camera has a static IP."
         }
       }

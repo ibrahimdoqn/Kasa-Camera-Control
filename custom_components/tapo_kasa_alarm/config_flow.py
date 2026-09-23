@@ -25,9 +25,12 @@ from .const import (
     CONF_CONNECTION_PARAMETERS,
     CONF_DISCOVERY,
     CONF_SCAN_INTERVAL,
+    CONF_SESSION_RENEW,
     DEFAULT_DISCOVERY,
     DEFAULT_SCAN_INTERVAL,
+    DEFAULT_SESSION_RENEW,
     DOMAIN,
+    MAX_SESSION_RENEW,
     MIN_SCAN_INTERVAL,
 )
 
@@ -156,7 +159,7 @@ class TapoAlarmConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class TapoAlarmOptionsFlow(OptionsFlow):
-    """Polling interval and IP discovery options."""
+    """Polling interval, session renewal and IP discovery options."""
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -174,6 +177,12 @@ class TapoAlarmOptionsFlow(OptionsFlow):
                             CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
                         ),
                     ): vol.All(vol.Coerce(int), vol.Range(min=MIN_SCAN_INTERVAL)),
+                    vol.Required(
+                        CONF_SESSION_RENEW,
+                        default=self.config_entry.options.get(
+                            CONF_SESSION_RENEW, DEFAULT_SESSION_RENEW
+                        ),
+                    ): vol.All(vol.Coerce(int), vol.Range(min=0, max=MAX_SESSION_RENEW)),
                     vol.Required(
                         CONF_DISCOVERY,
                         default=self.config_entry.options.get(

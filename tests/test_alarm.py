@@ -338,9 +338,45 @@ async def test_options_flow(hass: HomeAssistant) -> None:
     entry, _ = await _setup(hass, fake_device())
     result = await hass.config_entries.options.async_init(entry.entry_id)
     result = await hass.config_entries.options.async_configure(
-        result["flow_id"], {"scan_interval": 30, "discovery": False}
+        result["flow_id"], {"scan_interval": 30, "session_renew": 5, "discovery": False}
     )
     await hass.async_block_till_done()
-    assert entry.options == {"scan_interval": 30, "discovery": False}
+    assert entry.options == {"scan_interval": 30, "session_renew": 5, "discovery": False}
     assert entry.runtime_data.update_interval == timedelta(seconds=30)
+    assert entry.runtime_data.api.session_renew_minutes == 5
     assert entry.state is ConfigEntryState.LOADED
+
+
+async def test_session_renewed_before_camera_ends_it() -> None:
+    """The session is dropped every N minutes so python-kasa logs in again."""
+    from custom_components.tapo_kasa_alarm.api import TapoAlarmApi
+
+    dev = fake_device()
+    dev.protocol.close = AsyncMock()
+    clock = {"now": 1000.0}
+    with patch(
+        "custom_components.tapo_kasa_alarm.api.time.monotonic",
+        side_effect=lambda: clock["now"],
+    ):
+        api = TapoAlarmApi(dev, session_renew_minutes=8)
+        clock["now"] += 7 * 60
+        await api.get_state()
+        dev.protocol.close.assert_not_awaited()
+
+        clock["now"] += 60  # 8 minutes after login
+        await api.get_state()
+        dev.protocol.close.assert_awaited_once()
+
+        clock["now"] += 60  # new session is only 1 minute old
+        await api.get_state()
+        dev.protocol.close.assert_awaited_once()
+
+        api.session_renew_minutes = 0  # turned off
+        clock["now"] += 60 * 60
+        await api.get_state()
+        dev.protocol.close.assert_awaited_once()
+
+
+async def test_default_session_renew(hass: HomeAssistant) -> None:
+    entry, _ = await _setup(hass, fake_device())
+    assert entry.runtime_data.api.session_renew_minutes == 8

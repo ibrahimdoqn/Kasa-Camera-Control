@@ -29,6 +29,8 @@ from .api import AuthenticationError, KasaException, TapoAlarmApi, connect_devic
 from .const import (
     CONF_CONNECTION_PARAMETERS,
     CONF_SCAN_INTERVAL,
+    CONF_SESSION_RENEW,
+    DEFAULT_SESSION_RENEW,
     DISCOVERY_INTERVAL,
     DOMAIN,
     scan_interval,
@@ -99,7 +101,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: TapoAlarmConfigEntry) ->
             data={**entry.data, CONF_CONNECTION_PARAMETERS: connection_parameters},
         )
 
-    api = TapoAlarmApi(device)
+    api = TapoAlarmApi(
+        device, entry.options.get(CONF_SESSION_RENEW, DEFAULT_SESSION_RENEW)
+    )
     coordinator = TapoAlarmCoordinator(hass, entry, api)
     try:
         await coordinator.async_config_entry_first_refresh()
@@ -123,12 +127,14 @@ async def async_unload_entry(hass: HomeAssistant, entry: TapoAlarmConfigEntry) -
 
 
 async def _async_options_updated(hass: HomeAssistant, entry: TapoAlarmConfigEntry) -> None:
-    """Apply a changed polling interval without reconnecting.
+    """Apply changed options without reconnecting.
 
     The discovery option is read on every discovery run.
     """
-    entry.runtime_data.update_interval = scan_interval(
-        entry.options.get(CONF_SCAN_INTERVAL)
+    coordinator = entry.runtime_data
+    coordinator.update_interval = scan_interval(entry.options.get(CONF_SCAN_INTERVAL))
+    coordinator.api.session_renew_minutes = entry.options.get(
+        CONF_SESSION_RENEW, DEFAULT_SESSION_RENEW
     )
 
 

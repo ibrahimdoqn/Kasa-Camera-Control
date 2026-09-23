@@ -49,6 +49,7 @@ Kameraları yeniden eklemeniz gerekmez. Artık kullanılmayan varlıklar (eski S
 Ayarlar → Cihazlar ve Hizmetler → **Kasa Camera Control** → kamera → **Yapılandır**
 
 - **Sorgulama aralığı (saniye):** Varsayılan 5, TP-Link entegrasyonuyla aynı. En az 5. Değişiklik kameraya yeniden bağlanmadan uygulanır.
+- **Oturumu yenileme aralığı (dakika):** Varsayılan 8, en fazla 60, 0 kapatır. Kameralar oturumu girişten yaklaşık 10 dakika sonra kapatır; entegrasyon bundan önce yeniden giriş yapar. Log'da hâlâ `401` görüyorsanız değeri düşürün.
 - **IP değişirse kamerayı bul (MAC ile arama):** Varsayılan açık, TP-Link entegrasyonundaki gibi. Kamera açılışta ve 15 dakikada bir ağda MAC adresiyle aranır; IP'si değişmişse yeni adres kaydedilir. Sabit IP kullanıyorsanız kapatın; kapalıyken ağa hiç arama yayını gönderilmez.
 
 ## Yerel çalışma
@@ -90,7 +91,14 @@ Entegrasyon, Home Assistant'ın resmi TP-Link entegrasyonunun kodu örnek alına
 - **Kaydedilmiş bağlantı ayarları:** İlk başarılı bağlantıda kameranın bağlantı türü kaydedilir. Sonraki açılışlarda kamera doğrudan bu ayarlarla bağlanır.
 - **MAC kontrolü:** Bağlanılan cihazın MAC adresi kayıtlı kamerayla karşılaştırılır. O IP'de başka bir cihaz varsa kullanılmaz, kameralar karışmaz.
 - **Zaman aşımı:** 5 saniye, TP-Link'le aynı.
-- Kamera başına **tek oturum** açık tutulur. Kamera oturumu kapatırsa python-kasa bir sonraki sorguda yeniden giriş yapar.
+- Kamera başına **tek oturum** açık tutulur.
+
+### Oturum yenileme
+- Kameralar oturumu girişten yaklaşık **10 dakika** sonra, trafik olsa da olmasa da kapatır ve sonraki isteğe `401` ile cevap verir. python-kasa (ve dolayısıyla resmi TP-Link entegrasyonu) bunu ancak bir istek başarısız olunca fark eder; o anda anahtarlar birkaç saniye "kullanılamıyor" görünür.
+- Bunu önlemek için entegrasyon oturumu süre dolmadan, varsayılan olarak **8 dakikada bir** kendisi yeniler: eski oturumu bırakır ve bir sonraki istekte yeniden giriş yapılır.
+- Tapo kameralarda "çıkış yap" komutu yoktur; bırakılan oturumu kamera kendi süresi dolunca siler. Eski oturumla bir daha istek gönderilmez.
+- Yenileme yalnızca kamera oturumunu sıfırlar; Home Assistant'ın ortak HTTP bağlantısı açık kalır.
+- Aralık seçeneklerden değiştirilebilir; 0 yenilemeyi kapatır. TP-Link'te bu özellik yoktur.
 
 ### Sorgulama
 - 5 saniyede bir, TP-Link'teki gibi sorgulanır.
@@ -127,12 +135,13 @@ TP-Link entegrasyonundaki gibi:
 ### TP-Link'ten farkları
 - Alarm, alarm sesi/ışığı ve bildirim anahtarları ile kameralar için yeniden başlatma düğmesi. TP-Link'te bunlar yok.
 - Her sorguda tam güncelleme yerine yalnızca alarm ve bildirim ayarı okunur (1 istek; TP-Link'te genelde 2–3).
-- Sorgulama aralığı ve MAC ile arama seçenekten değiştirilebilir. TP-Link'te bu ayarlar sabittir; varsayılanlar TP-Link'inkilerle aynıdır.
+- Oturum süre dolmadan yenilenir (varsayılan 8 dakika). TP-Link oturumun dolmasını bekler ve o sorgu başarısız olur.
+- Sorgulama aralığı, oturum yenileme ve MAC ile arama seçenekten değiştirilebilir. TP-Link'te bu ayarlar sabittir; sorgulama ve arama varsayılanları TP-Link'inkilerle aynıdır.
 - Aynı kamera hem TP-Link entegrasyonuna hem bu entegrasyona ekliyse kameraya iki ayrı oturum açılır.
 
 ## Sorun giderme
 - **Anahtarlar sık sık "kullanılamıyor" oluyor:** Log'da `Connect call failed` veya `TimeoutError` varsa kamera o anda ağda değildir (Wi-Fi kopması veya yeniden başlama). Home Assistant'ın **Ping** entegrasyonuyla kameranın IP'si için bir sensör ekleyin; ping de düşüyorsa sorun Wi-Fi'da veya kameradadır. Tapo uygulamasından kameranın sinyal gücüne bakın.
-- **Anahtarlar birkaç saniyeliğine "kullanılamıyor" olup geri geliyor:** Kamera oturumu kapattığında log'da `401` hatası görünür ve o sorgu başarısız sayılır; python-kasa bir sonraki sorguda (5 saniye sonra) yeniden giriş yapar. Resmi TP-Link entegrasyonu da böyle davranır.
+- **Anahtarlar birkaç saniyeliğine "kullanılamıyor" olup geri geliyor, log'da `401` var:** Kamera oturumu yenilemeden önce kapatmış demektir. Seçeneklerden **oturumu yenileme aralığını** düşürün (örneğin 5 dakika). Yenileme kapalıysa (0) bu, her 10 dakikada bir beklenen davranıştır; resmi TP-Link entegrasyonu da böyle davranır.
 - **Otomasyon "kullanılamıyor"dan dönünce tetikleniyor:** Anahtar "kullanılamıyor"dan tekrar "açık"a döndüğünde durum değişikliğine bağlı bir otomasyon tetiklenebilir. Tetikleyiciye `not_from: unavailable` ekleyin:
   ```yaml
   triggers:
