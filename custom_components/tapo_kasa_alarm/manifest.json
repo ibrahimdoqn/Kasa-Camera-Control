@@ -1,0 +1,13 @@
+{
+  "domain": "tapo_kasa_alarm",
+  "name": "Tapo Kamera Alarm (python-kasa)",
+  "codeowners": ["@ibrahimdoqn"],
+  "config_flow": true,
+  "documentation": "https://github.com/ibrahimdoqn/TapoKamera",
+  "integration_type": "device",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/ibrahimdoqn/TapoKamera/issues",
+  "loggers": ["kasa"],
+  "requirements": ["python-kasa>=0.10.0"],
+  "version": "1.0.0"
+}

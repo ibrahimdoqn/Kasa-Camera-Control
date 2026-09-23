@@ -1,0 +1,58 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Tapo kamera",
+        "description": "Tapo uygulamasında ve Home Assistant TP-Link entegrasyonunda kullandığınız TP-Link bulut hesabını (e-posta / şifre) girin.",
+        "data": {
+          "host": "Host / IP",
+          "username": "TP-Link hesabı e-posta",
+          "password": "Şifre"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Yeniden kimlik doğrulama",
+        "data": {
+          "username": "TP-Link hesabı e-posta",
+          "password": "Şifre"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Geçersiz kullanıcı adı veya şifre",
+      "cannot_connect": "Kameraya bağlanılamadı",
+      "unknown": "Beklenmeyen hata"
+    },
+    "abort": {
+      "already_configured": "Kamera zaten ekli",
+      "reauth_successful": "Kimlik doğrulama başarılı"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "data": {
+          "scan_interval": "Sorgulama aralığı (saniye)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "switch": {
+      "alarm": {
+        "name": "Alarm"
+      },
+      "alarm_sound": {
+        "name": "Alarm sesi"
+      },
+      "alarm_light": {
+        "name": "Alarm ışığı"
+      }
+    },
+    "siren": {
+      "siren": {
+        "name": "Siren"
+      }
+    }
+  }
+}

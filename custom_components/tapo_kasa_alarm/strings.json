@@ -1,0 +1,58 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Tapo camera",
+        "description": "Use the same TP-Link cloud account (e-mail / password) that the Tapo app and Home Assistant's TP-Link integration use.",
+        "data": {
+          "host": "Host / IP",
+          "username": "TP-Link account e-mail",
+          "password": "Password"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate",
+        "data": {
+          "username": "TP-Link account e-mail",
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid credentials",
+      "cannot_connect": "Cannot connect to the camera",
+      "unknown": "Unexpected error"
+    },
+    "abort": {
+      "already_configured": "Camera is already configured",
+      "reauth_successful": "Re-authentication successful"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "data": {
+          "scan_interval": "Polling interval (seconds)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "switch": {
+      "alarm": {
+        "name": "Alarm"
+      },
+      "alarm_sound": {
+        "name": "Alarm sound"
+      },
+      "alarm_light": {
+        "name": "Alarm light"
+      }
+    },
+    "siren": {
+      "siren": {
+        "name": "Siren"
+      }
+    }
+  }
+}

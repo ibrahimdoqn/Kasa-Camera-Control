@@ -1,0 +1,5 @@
+{
+  "name": "Tapo Kamera Alarm (python-kasa)",
+  "render_readme": true,
+  "homeassistant": "2024.12.0"
+}
