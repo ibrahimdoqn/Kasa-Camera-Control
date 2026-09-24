@@ -14,8 +14,20 @@ from homeassistant.helpers.debounce import Debouncer
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
-from .api import AuthenticationError, KasaException, TapoAlarmApi, disconnect_reason
-from .const import CONF_SCAN_INTERVAL, REQUEST_REFRESH_DELAY, scan_interval
+from .api import (
+    AuthenticationError,
+    KasaException,
+    TapoAlarmApi,
+    alarm_modes,
+    disconnect_reason,
+)
+from .const import (
+    CONF_SCAN_INTERVAL,
+    MODE_LIGHT,
+    MODE_SOUND,
+    REQUEST_REFRESH_DELAY,
+    scan_interval,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -96,10 +108,10 @@ class TapoAlarmCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         name: str,
         *,
         refresh: bool = True,
-    ) -> None:
+    ) -> Any:
         """Run a command, map errors and refresh after, like the TP-Link integration."""
         try:
-            await func()
+            result = await func()
         except AuthenticationError as err:
             self.config_entry.async_start_reauth(self.hass)
             raise HomeAssistantError(f"Authentication failed on {name}: {err}") from err
@@ -109,17 +121,43 @@ class TapoAlarmCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             raise HomeAssistantError(f"Error on {name}: {err}") from err
         if refresh:
             await self.async_request_refresh()
+        return result
 
     async def async_set_alarm(self, **changes: bool) -> None:
-        """Write alarm settings."""
-        await self.async_command(
-            lambda: self.api.set_alarm(self.data["alarm"], **changes), "set alarm"
+        """Write alarm settings.
+
+        Like the Tapo app, the camera is not read again right after the
+        write: the written fields are applied to the known state and the
+        next regular poll (which starts over from now) confirms them. This
+        way the camera is not asked for its config while it is still
+        applying the new alarm setting.
+        """
+        sent = await self.async_command(
+            lambda: self.api.set_alarm(self.data["alarm"], **changes),
+            "set alarm",
+            refresh=False,
         )
+        alarm = {**self.data["alarm"], **sent}
+        if "alarm_mode" in sent:
+            modes = alarm_modes({"alarm_mode": sent["alarm_mode"]})
+            for flag, mode in (
+                ("sound_alarm_enabled", MODE_SOUND),
+                ("light_alarm_enabled", MODE_LIGHT),
+            ):
+                if flag in alarm:
+                    present = mode in modes or (mode == MODE_SOUND and "siren" in modes)
+                    alarm[flag] = "on" if present else "off"
+        self.async_set_updated_data({**self.data, "alarm": alarm})
 
     async def async_set_notifications(self, enabled: bool) -> None:
-        """Write the notification setting."""
-        await self.async_command(
-            lambda: self.api.set_notifications(enabled), "set notifications"
+        """Write the notification setting, applied like async_set_alarm."""
+        sent = await self.async_command(
+            lambda: self.api.set_notifications(enabled),
+            "set notifications",
+            refresh=False,
+        )
+        self.async_set_updated_data(
+            {**self.data, "push": {**(self.data.get("push") or {}), **sent}}
         )
 
     async def async_reboot(self) -> None:

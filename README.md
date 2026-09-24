@@ -125,7 +125,7 @@ Entegrasyon, Home Assistant'ın resmi TP-Link entegrasyonunun kodu örnek alına
 
 ### Anahtara basınca
 - Tek bir yazma isteği gider. Yazma başarısız olursa ekranda hata gösterilir, tekrar denenmez (TP-Link'teki gibi).
-- TP-Link'teki gibi, 0,35 saniye sonra kamera yeniden sorgulanır ve yeni durum oradan okunur.
+- Yazma başarılı olunca yeni durum hemen gösterilir; kamera hemen yeniden sorgulanmaz. Tapo uygulaması da böyle yapar: yazdıktan sonra kamerayı okumaz, bildiği durumu günceller. Böylece kamera yeni alarm ayarını uygularken ona soru sorulmaz. Sonraki normal sorgu (yazmadan 5 saniye sonra) durumu kameradan doğrular.
 
 ### Yeniden başlatma düğmesine basınca
 - Yeniden başlatmadan sonra sorgu yapılmaz. Kamera bir süre "kullanılamıyor" görünür ve açılınca kendiliğinden geri gelir.
@@ -180,6 +180,15 @@ Her kameranın cihaz sayfasındaki **Tanılama** bölümünde iki sensör vardı
 - Kamera hiç cevap vermediğinde sorular tek tek tekrar sorulmaz. TP-Link her soruyu tek tek tekrar dener, bu da ulaşılamayan bir kamerada sorguyu uzatır.
 - Sorgulama aralığı, oturum yenileme ve MAC ile arama seçenekten değiştirilebilir. TP-Link'te bu ayarlar sabittir; sorgulama ve arama varsayılanları TP-Link'inkilerle aynıdır.
 - Aynı kamera hem TP-Link entegrasyonuna hem bu entegrasyona ekliyse kameraya iki ayrı oturum açılır.
+
+### Tapo uygulamasıyla karşılaştırma
+Tapo uygulaması (Android 3.21.112) incelenerek karşılaştırıldı:
+- **Giriş ve şifreleme:** Uygulama da python-kasa ile aynı yöntemi kullanır: `cnonce`/`nonce` ile giriş, `stok` belirteci, AES şifreli `securePassthrough`, her istekte artan `seq` ve `tapo_tag` başlıkları. Fark yok.
+- **İstek biçimi:** Uygulama `setAlertConfig`'i de `multipleRequest` içinde gönderir, python-kasa da öyle. Fark yok.
+- **Alarm yazma:** Uygulama yalnızca değişen alanı gönderir. 1.6.6'dan beri bu entegrasyon da öyle yapar.
+- **Yazmadan sonra:** Uygulama kamerayı hemen okumaz, bildiği durumu günceller. Bu entegrasyon da artık öyle yapar (1.6.6'ya kadar 0,35 saniye sonra okuyordu).
+- **Oturum:** Uygulama oturumu süre ile yenilemez; kamera `-40401` (oturum doldu) dediğinde yeniden giriş yapar. Bu entegrasyon bunu da yapar, ek olarak oturumu 8 dakikada bir önceden yeniler.
+- **Zaman aşımı:** Uygulama 30 saniye bekler. Bu entegrasyon TP-Link gibi 5 saniye bekler.
 
 ## Sorun giderme
 - **Anahtarlar sık sık "kullanılamıyor" oluyor:** Log'da `Connect call failed` veya `TimeoutError` varsa kamera o anda ağda değildir (Wi-Fi kopması veya yeniden başlama). Home Assistant'ın **Ping** entegrasyonuyla kameranın IP'si için bir sensör ekleyin; ping de düşüyorsa sorun Wi-Fi'da veya kameradadır. Tapo uygulamasından kameranın sinyal gücüne bakın.

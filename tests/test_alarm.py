@@ -130,6 +130,7 @@ async def test_setup_and_toggle(hass: HomeAssistant) -> None:
     assert hass.states.get("switch.bahce_alarm").state == "off"
     assert hass.states.get("switch.bahce_alarm_sound").state == "on"
 
+    dev.protocol.requests.clear()
     await hass.services.async_call(
         "switch", "turn_on", {"entity_id": "switch.bahce_alarm"}, blocking=True
     )
@@ -137,9 +138,11 @@ async def test_setup_and_toggle(hass: HomeAssistant) -> None:
     assert dev.protocol.writes[-1] == {"enabled": "on"}
     assert dev.protocol.alarm["enabled"] == "on"
     assert dev.protocol.alarm["alarm_mode"] == ["sound", "light"]
-    # Like TP-Link, the new state comes from the refresh after the command.
-    await refresh_after_command(hass)
+    # Like the Tapo app, the written state is shown at once and the camera
+    # is not read again right after the write.
     assert hass.states.get("switch.bahce_alarm").state == "on"
+    await refresh_after_command(hass)
+    assert [next(iter(r)) for r in dev.protocol.requests] == ["setAlertConfig"]
 
     await hass.services.async_call(
         "switch", "turn_off", {"entity_id": "switch.bahce_alarm_light"}, blocking=True
@@ -155,7 +158,9 @@ async def test_setup_and_toggle(hass: HomeAssistant) -> None:
         "light_type": "1",
         "sound_alarm_enabled": "on",
     }
-    await refresh_after_command(hass)
+    assert hass.states.get("switch.bahce_alarm_light").state == "off"
+    assert entry.runtime_data.data["alarm"]["light_alarm_enabled"] == "off"
+    assert hass.states.get("switch.bahce_alarm_sound").state == "on"
 
     assert hass.states.get("switch.bahce_notifications").state == "on"
     assert hass.states.get("switch.bahce_rich_notifications") is None
@@ -163,7 +168,6 @@ async def test_setup_and_toggle(hass: HomeAssistant) -> None:
         "switch", "turn_off", {"entity_id": "switch.bahce_notifications"}, blocking=True
     )
     assert dev.protocol.push["notification_enabled"] == "off"
-    await refresh_after_command(hass)
     assert hass.states.get("switch.bahce_notifications").state == "off"
 
     # Every 5 seconds, one request with only the alarm and notification config.
