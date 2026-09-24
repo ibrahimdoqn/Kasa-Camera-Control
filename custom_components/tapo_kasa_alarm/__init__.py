@@ -26,6 +26,7 @@ from .const import (
     scan_interval,
 )
 from .coordinator import TapoAlarmCoordinator, auth_failed, auth_ok
+from .ping import PingCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -81,6 +82,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: TapoAlarmConfigEntry) ->
     except Exception:
         await api.close()
         raise
+    coordinator.ping = PingCoordinator(hass, entry, host)
+    await coordinator.ping.async_refresh()
 
     entry.runtime_data = coordinator
     _remove_connection_sensors(hass, entry)

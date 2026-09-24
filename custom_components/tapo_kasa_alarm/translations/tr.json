@@ -86,27 +86,11 @@
       "connection": {
         "name": "Bağlantı",
         "state_attributes": {
+          "latency_ms": {
+            "name": "Gecikme (ms)"
+          },
           "last_disconnect": {
             "name": "Son kopma"
-          },
-          "last_disconnect_reason": {
-            "name": "Son kopma sebebi",
-            "state": {
-              "restarting": "Bağlantı reddedildi (kamera servisleri yeniden başlıyor)",
-              "unreachable": "Kamera ağda değil",
-              "timeout": "Zaman aşımı",
-              "auth": "Giriş reddedildi",
-              "error": "Kamera hata döndürdü",
-              "reboot": "Yeniden başlat düğmesi"
-            }
-          },
-          "last_disconnect_source": {
-            "name": "Son kopmanın kaynağı",
-            "state": {
-              "poll": "Sorgu",
-              "command": "Komut (anahtar)",
-              "reboot": "Yeniden başlatma"
-            }
           },
           "last_outage_seconds": {
             "name": "Son kesinti süresi (sn)"

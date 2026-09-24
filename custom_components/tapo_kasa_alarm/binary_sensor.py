@@ -1,7 +1,8 @@
-"""Connection diagnostic: whether the camera is connected."""
+"""Connection diagnostic: whether the camera answers ping."""
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from homeassistant.components.binary_sensor import (
@@ -14,7 +15,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import TapoAlarmConfigEntry
 from .coordinator import TapoAlarmCoordinator
-from .entity import TapoAlarmEntity
+from .entity import CameraPingEntity
 
 
 async def async_setup_entry(
@@ -26,12 +27,8 @@ async def async_setup_entry(
     async_add_entities([ConnectionSensor(entry.runtime_data)])
 
 
-class ConnectionSensor(TapoAlarmEntity, BinarySensorEntity):
-    """On while the camera answers, off from a failed poll, a command that
-    cannot reach the camera or a reboot until the next successful poll.
-
-    The attributes describe the last disconnect.
-    """
+class ConnectionSensor(CameraPingEntity, BinarySensorEntity):
+    """On while the camera answers ping; the attributes describe the last outage."""
 
     _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
     _attr_entity_category = EntityCategory.DIAGNOSTIC
@@ -40,25 +37,19 @@ class ConnectionSensor(TapoAlarmEntity, BinarySensorEntity):
         super().__init__(coordinator, "connection")
 
     @property
-    def available(self) -> bool:
-        # Stays available so that "disconnected" can be shown.
-        return True
-
-    @property
     def is_on(self) -> bool:
-        return self.coordinator.connected
+        return self.coordinator.data.connected
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        coordinator = self.coordinator
+        state = self.coordinator.data
         return {
-            "last_disconnect": _iso(coordinator.last_disconnect),
-            "last_disconnect_reason": coordinator.last_disconnect_reason,
-            "last_disconnect_source": coordinator.last_disconnect_source,
-            "last_outage_seconds": coordinator.last_outage_seconds,
-            "down_since": _iso(coordinator.down_since),
+            "latency_ms": state.latency_ms,
+            "last_disconnect": _iso(state.last_disconnect),
+            "last_outage_seconds": state.last_outage_seconds,
+            "down_since": _iso(state.down_since),
         }
 
 
-def _iso(value) -> str | None:
+def _iso(value: datetime | None) -> str | None:
     return value.isoformat() if value else None

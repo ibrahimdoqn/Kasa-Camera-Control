@@ -1,4 +1,4 @@
-"""Connection diagnostic: since when the camera has been connected."""
+"""Connection diagnostic: since when the camera has answered ping without a break."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import TapoAlarmConfigEntry
 from .coordinator import TapoAlarmCoordinator
-from .entity import TapoAlarmEntity
+from .entity import CameraPingEntity
 
 
 async def async_setup_entry(
@@ -23,12 +23,12 @@ async def async_setup_entry(
     async_add_entities([ConnectedSinceSensor(entry.runtime_data)])
 
 
-class ConnectedSinceSensor(TapoAlarmEntity, SensorEntity):
-    """When the current uninterrupted connection started.
+class ConnectedSinceSensor(CameraPingEntity, SensorEntity):
+    """When the camera started answering ping without a break.
 
     Home Assistant shows a timestamp as "x minutes ago", which is how long
-    the camera has been connected without a break. Unknown while it is not
-    connected. Counted from when Home Assistant set the camera up.
+    the camera has been reachable. Unknown while it does not answer.
+    Counted from when Home Assistant set the camera up.
     """
 
     _attr_device_class = SensorDeviceClass.TIMESTAMP
@@ -38,9 +38,5 @@ class ConnectedSinceSensor(TapoAlarmEntity, SensorEntity):
         super().__init__(coordinator, "connected_since")
 
     @property
-    def available(self) -> bool:
-        return True
-
-    @property
     def native_value(self) -> datetime | None:
-        return self.coordinator.connected_since
+        return self.coordinator.data.connected_since

@@ -21,7 +21,7 @@ Nasıl çalıştığının ayrıntıları: [ARCHITECTURE.md](ARCHITECTURE.md)
 | `switch.<kamera>_alarm_isigi` | Alarm çalınca ışık kullanılsın mı |
 | `switch.<kamera>_bildirimler` | Tapo uygulaması bildirimlerini açar/kapatır |
 | `button.<kamera>_yeniden_baslat` | Kamerayı yeniden başlatır (Tanılama bölümünde) |
-| `binary_sensor.<kamera>_baglanti` | Kamera bağlı mı; son kopmanın ayrıntıları (Tanılama bölümünde) |
+| `binary_sensor.<kamera>_baglanti` | Kamera ping'e cevap veriyor mu; son kesintinin ayrıntıları (Tanılama bölümünde) |
 | `sensor.<kamera>_baglanti_kuruldu` | Kesintisiz bağlantının ne zamandır sürdüğü (Tanılama bölümünde) |
 
 - Ses veya ışıktan en az biri açık kalmalıdır; kamera bunu zorunlu tutar.
@@ -77,25 +77,24 @@ automation:
 Alarm zaten açıksa kameraya bir şey yazılmaz; otomasyonu gönül rahatlığıyla sık çalıştırabilirsiniz.
 
 ## Bağlantı tanılama
-Her kameranın cihaz sayfasındaki **Tanılama** bölümünde:
+Her kameranın cihaz sayfasındaki **Tanılama** bölümünde, entegrasyonun kameraya **5 saniyede bir ping** atarak ölçtüğü iki sensör vardır. Ping kameraya giriş yapmaz ve kameranın servislerine yük bindirmez.
 
-- **Bağlantı:** Kamera cevap veriyorsa *Bağlı*, vermiyorsa *Bağlantı kesildi*. Bağlantı şu durumlarda kesik sayılır: bir sorgu başarısız olursa, bir anahtar komutu kameraya ulaşamazsa ve **Yeniden başlat** düğmesine basılırsa. Sonraki başarılı sorguda tekrar *Bağlı* olur.
-- **Bağlantı kuruldu:** Kesintisiz bağlantının başladığı an; Home Assistant bunu "2 saat önce" gibi gösterir, yani kamera o kadar süredir sorunsuz. Bağlantı yokken *Bilinmiyor* görünür. Home Assistant yeniden başladığında ölçüm baştan başlar.
+- **Bağlantı:** Kamera ping'e cevap veriyorsa *Bağlı*, vermiyorsa *Bağlantı kesildi*.
+- **Bağlantı kuruldu:** Kameranın kesintisiz cevap vermeye başladığı an; Home Assistant bunu "2 saat önce" gibi gösterir. Bağlantı yokken *Bilinmiyor*. Home Assistant yeniden başladığında ölçüm baştan başlar.
 
-**Bağlantı** sensörünün öznitelikleri son kopmayı anlatır:
+**Bağlantı** sensörünün öznitelikleri:
 
 | Öznitelik | Anlamı |
 |---|---|
-| Son kopma | Zamanı |
-| Son kopma sebebi | *Bağlantı reddedildi* (kamera servisleri yeniden başlıyor), *Kamera ağda değil*, *Zaman aşımı*, *Giriş reddedildi*, *Kamera hata döndürdü* veya *Yeniden başlat düğmesi* |
-| Son kopmanın kaynağı | *Sorgu*, *Komut (anahtar)* veya *Yeniden başlatma* |
-| Son kesinti süresi (sn) | Kesintinin kaç saniye sürdüğü (bağlantı geri gelince yazılır) |
+| Gecikme (ms) | Son ping'in cevap süresi |
+| Son kopma | Kameranın son kez cevap vermeyi bıraktığı an |
+| Son kesinti süresi (sn) | Son kesintinin kaç saniye sürdüğü |
 | Kesinti başlangıcı | Şu an kesinti varsa başladığı zaman |
 
-Kamera, iki sorgu arasındaki süreden (varsayılan 5 saniye) kısa bir süre için çöküp geri gelirse bu görünmeyebilir. RTSP kaydınızdaki kopmalarla karşılaştırmak bu tür kısa çökmeleri de gösterir.
+Ping, kameranın **ağda** olup olmadığını gösterir: Wi-Fi kopması, elektrik kesintisi ve kameranın tamamen yeniden başlaması görünür. Kamera ağda kalıp yalnızca servislerini yeniden başlatırsa (alarm yazmasından sonraki çökmelerde olduğu gibi) ping cevap vermeye devam eder; bu durumda anahtarlar "kullanılamıyor" olur ama **Bağlantı** *Bağlı* kalır.
 
 ## Sorun giderme
-- **Anahtarlar sık sık "kullanılamıyor" oluyor:** Kamera o anda ağda değildir veya servislerini yeniden başlatıyordur. **Ping** entegrasyonuyla kameranın IP'si için bir sensör ekleyin; ping de düşüyorsa sorun Wi-Fi'da veya kameradadır.
+- **Anahtarlar sık sık "kullanılamıyor" oluyor:** Kamera o anda ağda değildir veya servislerini yeniden başlatıyordur. Tanılama'daki **Bağlantı** sensörüne bakın: o da kesikse kamera ağdan düşüyordur (Wi-Fi, elektrik); *Bağlı* ise kamera ağda ama servisleri yeniden başlıyordur.
 - **Alarm anahtarı kısa süre sonra eski değerine dönüyor:** Kamera yazmayı kabul edip hemen ardından çökmüş ve yeni ayarı kaydetmeden yeniden başlamıştır (RTSP de kopar). Bu kameranın firmware hatasıdır; anahtar kameranın gerçek durumunu gösterir. Tapo uygulamasından firmware güncellemesine bakın.
 - **Şifre soruluyor:** Kamera girişi art arda 4 kez reddetmiştir. Tapo uygulamasına giriş yaptığınız TP-Link hesabının şifresini girin. Art arda yanlış denemeden sonra kamera girişi bir süre kilitler; birkaç dakika bekleyin.
 - **Formda `host`, `cloud_password` gibi ham alan adları görünüyor:** Arayüz çevirileri yüklenmemiştir. Tarayıcıda Ctrl+F5 ile yenileyin veya mobil uygulamayı kapatıp açın.

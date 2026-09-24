@@ -15,7 +15,6 @@ import logging
 from typing import Any
 
 from pytapo import Tapo
-import requests
 
 from homeassistant.core import HomeAssistant
 
@@ -90,46 +89,6 @@ def alarm_modes(alarm: dict[str, Any]) -> list[str]:
     change them when alarm_mode changes.
     """
     return list(alarm.get("alarm_mode") or [])
-
-
-# Reasons that mean the camera could not be reached (see connection_reason).
-UNREACHABLE_REASONS = frozenset({"restarting", "unreachable", "timeout"})
-
-
-def connection_reason(err: BaseException) -> str:
-    """Why a request to the camera failed, from the exception chain.
-
-    restarting: the camera is on the network but refuses the connection
-                (ConnectionRefusedError, errno 111): its services restart
-    timeout: the camera did not answer in time
-    unreachable: the camera is not on the network (e.g. errno 113, Wi-Fi drop)
-    auth: the login was rejected
-    error: the camera answered with an error
-    """
-    if isinstance(err, AuthenticationError):
-        return "auth"
-    seen: set[int] = set()
-    todo: list[Any] = [err]
-    timeout = connection = False
-    while todo:
-        item = todo.pop()
-        if not isinstance(item, BaseException) or id(item) in seen:
-            continue
-        seen.add(id(item))
-        if isinstance(item, ConnectionRefusedError):
-            return "restarting"
-        if isinstance(item, (requests.Timeout, TimeoutError)):
-            timeout = True
-        elif isinstance(item, (requests.ConnectionError, OSError)):
-            connection = True
-        todo.extend(
-            [item.__cause__, item.__context__, getattr(item, "reason", None), *item.args]
-        )
-    if timeout:
-        return "timeout"
-    if connection:
-        return "unreachable"
-    return "error"
 
 
 def _response(responses: list[Any], method: str) -> dict[str, Any] | None:
