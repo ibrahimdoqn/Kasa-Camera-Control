@@ -132,7 +132,7 @@ Entegrasyon, Home Assistant'ın resmi TP-Link entegrasyonunun kodu örnek alına
 
 ### Alarm ayarını okuma ve yazma
 - Alarm ayarı yalnızca `getAlertConfig` ile okunur ve `setAlertConfig` ile yazılır. Bu, kameranın güncel alarm komutudur.
-- Yazarken kameradan okunan ayarın tamamı (ses seviyesi, süre, ışık türü vb.) geri gönderilir; yalnızca değiştirilen alan değişir.
+- Yazarken Tapo uygulaması gibi **yalnızca değişen alan** gönderilir: alarm açıp kapatınca sadece `{"enabled": "on"/"off"}`, ses/ışık değişince sadece `{"alarm_mode": [...]}`. Ses seviyesi, süre, ışık türü gibi diğer ayarlar yeniden yazılmaz. (Tapo uygulaması 3.21.112 incelenerek doğrulandı; önceden ayarın tamamı geri gönderiliyordu.)
 - Ses ve ışık anahtarları, kamera bildiriyorsa `sound_alarm_enabled` / `light_alarm_enabled` alanlarını okur.
 - **1.6.5'te kaldırılan eski yöntemler:** `getLastAlarmInfo` + ham `set` ve `getAlarmConfig` / `setAlarmConfig` (pytapo ve Tapo Control'ün kullandığı yöntemler). Alarm bu eski yöntemle yazılırken kameranın servislerini yeniden başlattığı (RTSP'nin koptuğu) görüldü; `setAlertConfig` kullanan kamerada bu görülmedi.
 - `getAlertConfig`'i desteklemeyen bir kamera yüklenmez. Log'a "does not answer getAlertConfig" hatası yazılır ve Home Assistant kurulumu tekrar tekrar dener.

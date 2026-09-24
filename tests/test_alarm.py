@@ -58,6 +58,7 @@ class FakeProtocol:
         }
         self.push = {"notification_enabled": "on", "rich_notification_enabled": "off"}
         self.requests = []
+        self.writes = []
 
     async def query(self, request):
         self.requests.append(request)
@@ -66,7 +67,13 @@ class FakeProtocol:
             if method == "getAlertConfig":
                 resp[method] = {"msg_alarm": {"chn1_msg_alarm_info": dict(self.alarm)}}
             elif method == "setAlertConfig":
-                self.alarm = dict(params["msg_alarm"]["chn1_msg_alarm_info"])
+                # The camera merges the sent fields into its config.
+                self.writes.append(params["msg_alarm"]["chn1_msg_alarm_info"])
+                self.alarm.update(params["msg_alarm"]["chn1_msg_alarm_info"])
+                if "alarm_mode" in self.writes[-1]:
+                    modes = self.alarm["alarm_mode"]
+                    self.alarm["sound_alarm_enabled"] = "on" if "sound" in modes else "off"
+                    self.alarm["light_alarm_enabled"] = "on" if "light" in modes else "off"
                 resp[method] = {}
             elif method == "getMsgPushConfig":
                 resp[method] = {"msg_push": {"chn1_msg_push_info": dict(self.push)}}
@@ -126,6 +133,8 @@ async def test_setup_and_toggle(hass: HomeAssistant) -> None:
     await hass.services.async_call(
         "switch", "turn_on", {"entity_id": "switch.bahce_alarm"}, blocking=True
     )
+    # Like the Tapo app, only the changed field is sent.
+    assert dev.protocol.writes[-1] == {"enabled": "on"}
     assert dev.protocol.alarm["enabled"] == "on"
     assert dev.protocol.alarm["alarm_mode"] == ["sound", "light"]
     # Like TP-Link, the new state comes from the refresh after the command.
@@ -135,6 +144,7 @@ async def test_setup_and_toggle(hass: HomeAssistant) -> None:
     await hass.services.async_call(
         "switch", "turn_off", {"entity_id": "switch.bahce_alarm_light"}, blocking=True
     )
+    assert dev.protocol.writes[-1] == {"alarm_mode": ["sound"]}
     assert dev.protocol.alarm == {
         "alarm_duration": "0",
         "alarm_mode": ["sound"],

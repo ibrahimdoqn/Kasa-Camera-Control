@@ -327,28 +327,28 @@ class TapoAlarmApi:
     ) -> dict[str, Any]:
         """Change the alarm with setAlertConfig.
 
-        The whole config read from the camera is sent back (volume,
-        duration, light type, ...) with only the changed fields updated,
-        like the Tapo app and Tapo Control do with this call.
+        Only the changed field is sent, like the Tapo app does with this
+        call: {"enabled": ...} to turn the alarm on/off, {"alarm_mode": ...}
+        to change sound/light. The rest of the config (volume, duration,
+        light type, ...) is not written again.
         """
-        modes = alarm_modes(current)
-        # Some firmwares call the sound mode "siren".
-        sound_mode = "siren" if "siren" in modes else MODE_SOUND
-        for mode, value in ((sound_mode, sound), (MODE_LIGHT, light)):
-            if value is True and mode not in modes:
-                modes.append(mode)
-            elif value is False and mode in modes:
-                modes.remove(mode)
-        if not modes:
-            raise ValueError("At least one of sound or light must stay enabled")
-        is_on = current.get("enabled") == "on" if enabled is None else enabled
-        new = {
-            **current,
-            "enabled": "on" if is_on else "off",
-            "alarm_mode": modes,
-            "sound_alarm_enabled": "on" if sound_mode in modes else "off",
-            "light_alarm_enabled": "on" if MODE_LIGHT in modes else "off",
-        }
+        new: dict[str, Any] = {}
+        if enabled is not None:
+            new["enabled"] = "on" if enabled else "off"
+        if sound is not None or light is not None:
+            modes = alarm_modes(current)
+            # Some firmwares call the sound mode "siren".
+            sound_mode = "siren" if "siren" in modes else MODE_SOUND
+            for mode, value in ((sound_mode, sound), (MODE_LIGHT, light)):
+                if value is True and mode not in modes:
+                    modes.append(mode)
+                elif value is False and mode in modes:
+                    modes.remove(mode)
+            if not modes:
+                raise ValueError("At least one of sound or light must stay enabled")
+            new["alarm_mode"] = modes
+        if not new:
+            return new
         await self._call("setAlertConfig", {"msg_alarm": {ALARM_SECTION: new}})
         return new
 
