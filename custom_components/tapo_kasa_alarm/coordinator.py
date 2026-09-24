@@ -123,6 +123,28 @@ class TapoAlarmCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await self.async_request_refresh()
         return result
 
+    async def _read_then_write(
+        self, write: Callable[[dict[str, Any]], Awaitable[dict[str, Any]]], name: str
+    ) -> dict[str, Any]:
+        """Read the camera, then write only what differs from what it reports.
+
+        The known state can be up to one poll old (for example the alarm was
+        changed in the Tapo app meanwhile), so it is read fresh right before
+        the write. Nothing is written when the camera is already as asked:
+        writing the alarm sometimes makes the camera restart its services,
+        reading never did.
+        """
+        fresh: dict[str, Any] = {}
+
+        async def _run() -> dict[str, Any]:
+            fresh.update(await self.api.get_state())
+            return await write(fresh)
+
+        sent = await self.async_command(_run, name, refresh=False)
+        self._connection_ok()
+        self.data = {**self.data, **fresh}
+        return sent
+
     async def async_set_alarm(self, **changes: bool) -> None:
         """Write alarm settings.
 
@@ -132,10 +154,8 @@ class TapoAlarmCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         way the camera is not asked for its config while it is still
         applying the new alarm setting.
         """
-        sent = await self.async_command(
-            lambda: self.api.set_alarm(self.data["alarm"], **changes),
-            "set alarm",
-            refresh=False,
+        sent = await self._read_then_write(
+            lambda state: self.api.set_alarm(state["alarm"], **changes), "set alarm"
         )
         alarm = {**self.data["alarm"], **sent}
         if "alarm_mode" in sent:
@@ -150,11 +170,10 @@ class TapoAlarmCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.async_set_updated_data({**self.data, "alarm": alarm})
 
     async def async_set_notifications(self, enabled: bool) -> None:
-        """Write the notification setting, applied like async_set_alarm."""
-        sent = await self.async_command(
-            lambda: self.api.set_notifications(enabled),
+        """Write the notification setting, like async_set_alarm."""
+        sent = await self._read_then_write(
+            lambda state: self.api.set_notifications(state["push"], enabled),
             "set notifications",
-            refresh=False,
         )
         self.async_set_updated_data(
             {**self.data, "push": {**(self.data.get("push") or {}), **sent}}

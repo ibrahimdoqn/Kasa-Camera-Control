@@ -138,11 +138,39 @@ async def test_setup_and_toggle(hass: HomeAssistant) -> None:
     assert dev.protocol.writes[-1] == {"enabled": "on"}
     assert dev.protocol.alarm["enabled"] == "on"
     assert dev.protocol.alarm["alarm_mode"] == ["sound", "light"]
-    # Like the Tapo app, the written state is shown at once and the camera
-    # is not read again right after the write.
+    # The camera is read right before the write. Like the Tapo app, the
+    # written state is shown at once and the camera is not read again
+    # right after the write.
     assert hass.states.get("switch.bahce_alarm").state == "on"
     await refresh_after_command(hass)
-    assert [next(iter(r)) for r in dev.protocol.requests] == ["setAlertConfig"]
+    assert [next(iter(r)) for r in dev.protocol.requests] == [
+        "getAlertConfig",
+        "setAlertConfig",
+    ]
+
+    # Already on: the camera is read, nothing is written.
+    dev.protocol.requests.clear()
+    await hass.services.async_call(
+        "switch", "turn_on", {"entity_id": "switch.bahce_alarm"}, blocking=True
+    )
+    assert [next(iter(r)) for r in dev.protocol.requests] == ["getAlertConfig"]
+    await hass.services.async_call(
+        "switch", "turn_on", {"entity_id": "switch.bahce_alarm_sound"}, blocking=True
+    )
+    await hass.services.async_call(
+        "switch", "turn_on", {"entity_id": "switch.bahce_notifications"}, blocking=True
+    )
+    assert all("set" not in next(iter(r)) for r in dev.protocol.requests)
+    assert hass.states.get("switch.bahce_alarm").state == "on"
+
+    # Changed in the Tapo app since the last poll: the fresh read sees it
+    # and the write is still sent.
+    dev.protocol.alarm["enabled"] = "off"
+    await hass.services.async_call(
+        "switch", "turn_on", {"entity_id": "switch.bahce_alarm"}, blocking=True
+    )
+    assert dev.protocol.writes[-1] == {"enabled": "on"}
+    assert dev.protocol.alarm["enabled"] == "on"
 
     await hass.services.async_call(
         "switch", "turn_off", {"entity_id": "switch.bahce_alarm_light"}, blocking=True

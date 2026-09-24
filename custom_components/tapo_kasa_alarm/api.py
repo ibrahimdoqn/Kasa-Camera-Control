@@ -330,13 +330,15 @@ class TapoAlarmApi:
         Only the changed field is sent, like the Tapo app does with this
         call: {"enabled": ...} to turn the alarm on/off, {"alarm_mode": ...}
         to change sound/light. The rest of the config (volume, duration,
-        light type, ...) is not written again.
+        light type, ...) is not written again. A field that already has the
+        wanted value is left out, and nothing is sent when no field changes.
         """
         new: dict[str, Any] = {}
-        if enabled is not None:
+        if enabled is not None and (current.get("enabled") == "on") != enabled:
             new["enabled"] = "on" if enabled else "off"
         if sound is not None or light is not None:
-            modes = alarm_modes(current)
+            old_modes = alarm_modes(current)
+            modes = list(old_modes)
             # Some firmwares call the sound mode "siren".
             sound_mode = "siren" if "siren" in modes else MODE_SOUND
             for mode, value in ((sound_mode, sound), (MODE_LIGHT, light)):
@@ -344,17 +346,27 @@ class TapoAlarmApi:
                     modes.append(mode)
                 elif value is False and mode in modes:
                     modes.remove(mode)
-            if not modes:
-                raise ValueError("At least one of sound or light must stay enabled")
-            new["alarm_mode"] = modes
+            if set(modes) != set(old_modes):
+                if not modes:
+                    raise ValueError("At least one of sound or light must stay enabled")
+                new["alarm_mode"] = modes
         if not new:
+            _LOGGER.debug("%s: alarm already as asked, nothing written", self.device.host)
             return new
         await self._call("setAlertConfig", {"msg_alarm": {ALARM_SECTION: new}})
         return new
 
-    async def set_notifications(self, enabled: bool) -> dict[str, str]:
-        """Turn app push notifications on/off."""
-        params = {"notification_enabled": "on" if enabled else "off"}
+    async def set_notifications(
+        self, current: dict[str, Any] | None, enabled: bool
+    ) -> dict[str, str]:
+        """Turn app push notifications on/off, unless already as asked."""
+        value = "on" if enabled else "off"
+        if current is not None and current.get("notification_enabled") == value:
+            _LOGGER.debug(
+                "%s: notifications already as asked, nothing written", self.device.host
+            )
+            return {}
+        params = {"notification_enabled": value}
         await self._call("setMsgPushConfig", {"msg_push": {PUSH_SECTION: params}})
         return params
 

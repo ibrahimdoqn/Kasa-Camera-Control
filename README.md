@@ -124,7 +124,8 @@ Entegrasyon, Home Assistant'ın resmi TP-Link entegrasyonunun kodu örnek alına
 - Her kameranın kendi zamanlayıcısı vardır. Kameralar birbirini beklemez.
 
 ### Anahtara basınca
-- Tek bir yazma isteği gider. Yazma başarısız olursa ekranda hata gösterilir, tekrar denenmez (TP-Link'teki gibi).
+- Önce kameranın o anki ayarı okunur. Kamera zaten istenen durumdaysa (örneğin alarm açıkken "aç" komutu gelirse) kameraya **hiçbir şey yazılmaz** (1.6.8). Alarm yazmak nadiren kameranın servislerini yeniden başlattığı, okumak ise hiç başlatmadığı için gereksiz yazmalar önlenir. Okuma anlık yapıldığı için arada Tapo uygulamasından yapılan bir değişiklik gözden kaçmaz.
+- Değişiklik gerekiyorsa tek bir yazma isteği gider. Yazma başarısız olursa ekranda hata gösterilir, tekrar denenmez (TP-Link'teki gibi).
 - Yazma başarılı olunca yeni durum hemen gösterilir; kamera hemen yeniden sorgulanmaz. Tapo uygulaması da böyle yapar: yazdıktan sonra kamerayı okumaz, bildiği durumu günceller. Böylece kamera yeni alarm ayarını uygularken ona soru sorulmaz. Sonraki normal sorgu (yazmadan 5 saniye sonra) durumu kameradan doğrular.
 
 ### Yeniden başlatma düğmesine basınca
