@@ -29,7 +29,7 @@ from .coordinator import TapoAlarmCoordinator, auth_failed, auth_ok
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS = [Platform.BUTTON, Platform.SWITCH]
+PLATFORMS = [Platform.BINARY_SENSOR, Platform.BUTTON, Platform.SENSOR, Platform.SWITCH]
 
 type TapoAlarmConfigEntry = ConfigEntry[TapoAlarmCoordinator]
 
@@ -105,9 +105,9 @@ async def _async_options_updated(hass: HomeAssistant, entry: TapoAlarmConfigEntr
 
 
 def _remove_connection_sensors(hass: HomeAssistant, entry: TapoAlarmConfigEntry) -> None:
-    """Drop the connection sensors earlier versions created."""
+    """Drop the disconnect count sensor earlier versions created."""
     registry = er.async_get(hass)
-    for key in ("connected_since", "disconnects"):
+    for key in ("disconnects",):
         unique_id = f"{entry.unique_id or entry.entry_id}_{key}"
         if entity_id := registry.async_get_entity_id("sensor", DOMAIN, unique_id):
             registry.async_remove(entity_id)

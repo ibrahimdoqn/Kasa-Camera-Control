@@ -81,6 +81,46 @@
       "reboot": {
         "name": "Reboot"
       }
+    },
+    "binary_sensor": {
+      "connection": {
+        "name": "Connection",
+        "state_attributes": {
+          "last_disconnect": {
+            "name": "Last disconnect"
+          },
+          "last_disconnect_reason": {
+            "name": "Last disconnect reason",
+            "state": {
+              "restarting": "Connection refused (camera services restarting)",
+              "unreachable": "Camera not on the network",
+              "timeout": "Timeout",
+              "auth": "Login rejected",
+              "error": "Camera returned an error",
+              "reboot": "Reboot button"
+            }
+          },
+          "last_disconnect_source": {
+            "name": "Last disconnect source",
+            "state": {
+              "poll": "Poll",
+              "command": "Command (switch)",
+              "reboot": "Reboot"
+            }
+          },
+          "last_outage_seconds": {
+            "name": "Last outage (s)"
+          },
+          "down_since": {
+            "name": "Down since"
+          }
+        }
+      }
+    },
+    "sensor": {
+      "connected_since": {
+        "name": "Connected since"
+      }
     }
   }
 }

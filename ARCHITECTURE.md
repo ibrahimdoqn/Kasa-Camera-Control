@@ -8,10 +8,12 @@ Bu belge Kasa Camera Control'ün içini anlatır: hangi dosya ne yapar, kameraya
 Home Assistant
  ├─ config_flow.py   Kamera ekleme, şifre yenileme, yeniden yapılandırma, seçenekler
  ├─ __init__.py      Kurulum: giriş, MAC kontrolü, KLAP kaydı, koordinatörü başlatma
- ├─ coordinator.py   Düzenli sorgu, komutlar, giriş reddi sayacı
+ ├─ coordinator.py   Düzenli sorgu, komutlar, bağlantı durumu, giriş reddi sayacı
  ├─ api.py           pytapo sarmalayıcısı: giriş, okuma, yazma, hata sınıflandırma
  ├─ switch.py        Alarm, Alarm sesi, Alarm ışığı, Bildirimler anahtarları
  ├─ button.py        Yeniden başlat düğmesi
+ ├─ binary_sensor.py Bağlantı (bağlı mı, son kopma)
+ ├─ sensor.py        Bağlantı kuruldu (kesintisiz bağlantının başlangıcı)
  ├─ entity.py        Ortak cihaz bilgisi (model, yazılım sürümü, MAC)
  └─ const.py         Sabitler
         │
@@ -130,7 +132,7 @@ pytapo'nun `setNotificationsEnabled` komutu kullanılır; yalnızca `notificatio
 ```
 
 ### Yeniden başlatma (`api.reboot`)
-pytapo'nun `reboot` komutu: `rebootDevice` + `{"system": {"reboot": "null"}}`, Tapo Control'deki gibi. Komuttan sonra ayrıca sorgu yapılmaz; normal sorgular devam eder, kamera açılana kadar anahtarlar "kullanılamıyor" görünür.
+pytapo'nun `reboot` komutu: `rebootDevice` + `{"system": {"reboot": "null"}}`, Tapo Control'deki gibi. Komuttan sonra ayrıca sorgu yapılmaz; normal sorgular devam eder, kamera açılana kadar anahtarlar "kullanılamıyor" görünür. Düğmeye basılınca bağlantı hemen kesik sayılır (sebep `reboot`).
 
 ## Hata yönetimi
 
@@ -160,6 +162,30 @@ Kameralar geçerli bir girişi de kısa süre reddedebilir, örneğin yeniden ba
 - Kabul edilen bir giriş veya başarılı bir sorgu sayacı sıfırlar.
 - Komutlardaki red sayılmaz ve şifre sordurmaz.
 - Kamera çok sayıda başarısız girişten sonra kendini geçici olarak kilitlerse ("Temporary Suspension") bu `CameraError` sayılır: şifre sorulmaz, kilit açılınca tekrar denenir.
+
+## Bağlantı durumu
+
+Koordinatör, tanılama varlıkları için bağlantı durumunu tutar. Kameraya ek istek gönderilmez; sorguların ve komutların sonucu kullanılır.
+
+| Olay | Sonuç |
+|---|---|
+| Başarılı sorgu veya komut | Bağlı. Önceden kesikse kesinti süresi hesaplanır, **Bağlantı kuruldu** şimdiye ayarlanır |
+| Başarısız sorgu (her türlü hata) | Kesik, kaynak `poll` |
+| Kameraya ulaşamayan komut (`restarting`, `unreachable`, `timeout`) | Kesik, kaynak `command`; varlıklar hemen güncellenir |
+| Kameranın hata cevabıyla biten komut | Bağlantı değişmez (kamera cevap vermiştir) |
+| **Yeniden başlat** düğmesi | Kesik, sebep `reboot`, kaynak `reboot` |
+
+Bir kesinti ilk sebebini korur; kesinti sürerken gelen diğer hatalar sebebi değiştirmez. **Bağlantı kuruldu** ilk başarılı sorguda başlar, yani Home Assistant yeniden başlayınca ölçüm sıfırlanır. İki sorgu arasına sığan kısa çökmeler (kamera sorgu aralığından kısa sürede geri gelirse) görünmez.
+
+`api.connection_reason()` hatanın `__cause__`, `__context__`, `reason` ve `args` zincirini gezer:
+
+| Sebep | Koşul |
+|---|---|
+| `auth` | `AuthenticationError` |
+| `restarting` | zincirde `ConnectionRefusedError` (errno 111): kamera ağda ama bağlantıyı reddediyor, servisleri yeniden başlıyor |
+| `timeout` | zincirde `requests.Timeout` veya `TimeoutError` |
+| `unreachable` | zincirde başka bir `requests.ConnectionError` / `OSError` (örneğin errno 113) |
+| `error` | diğerleri, örneğin kameranın hata cevabı |
 
 ## Yapılandırma
 
@@ -200,7 +226,7 @@ Tapo Android uygulaması 3.21.112 incelenerek karşılaştırıldı.
 | Sorgu | `getMost`, ~90 komut, 30 saniye | 1 istek, 5 saniye (ayarlanabilir) |
 | Alarm komutu | önce eski komutlar; `setAlertConfig`'te tüm ayar | yalnızca `setAlertConfig`, yalnızca değişen alan |
 | Yazmadan önce/sonra | önce okumaz; sonra `getMost` ile yeniler | önce okur, gerekmiyorsa yazmaz; sonra okumaz |
-| Özellikler | görüntü, hareket, PTZ, ... | yalnızca alarm, bildirim, yeniden başlatma |
+| Özellikler | görüntü, hareket, PTZ, ... | yalnızca alarm, bildirim, yeniden başlatma, bağlantı tanılama |
 
 ## Testler
 
@@ -211,7 +237,7 @@ Testlerin kapsadıkları:
 - **Bağlantı ayarları:** Tapo Control'le aynı pytapo ayarları, KLAP kaydı ve başka cihazın KLAP türünün kaydedilmemesi.
 - **Formlar:** kamera ekleme, hatalar, şifre yenileme, yeniden yapılandırma ve seçenekler.
 - **Hata yönetimi:** kurulumda ve sorguda giriş reddi toleransı.
-- **Kamera ulaşılamazken:** anahtarların "kullanılamıyor" olması ve geri gelmesi; eski bağlantı sensörlerinin kaldırılması.
+- **Bağlantı durumu:** sorgu, komut ve yeniden başlatmayla kesilmesi, geri gelmesi, kopma sebepleri; eski kopma sayısı sensörünün kaldırılması.
 
 ```bash
 pip install pytest-homeassistant-custom-component pytapo==3.4.19

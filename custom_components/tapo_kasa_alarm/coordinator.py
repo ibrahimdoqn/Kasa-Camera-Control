@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from datetime import datetime
 import logging
 from typing import Any
 
@@ -10,8 +11,15 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
 
-from .api import AuthenticationError, CameraError, TapoAlarmApi
+from .api import (
+    UNREACHABLE_REASONS,
+    AuthenticationError,
+    CameraError,
+    TapoAlarmApi,
+    connection_reason,
+)
 from .const import AUTH_RETRIES, CONF_SCAN_INTERVAL, DOMAIN, scan_interval
 
 _LOGGER = logging.getLogger(__name__)
@@ -54,19 +62,61 @@ class TapoAlarmCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             update_interval=scan_interval(entry.options.get(CONF_SCAN_INTERVAL)),
         )
         self.api = api
+        # Connection state for the diagnostic entities. The connection counts
+        # from the first successful poll; it is lost when a poll fails, when
+        # a command cannot reach the camera and when the camera is rebooted.
+        self.connected_since: datetime | None = None
+        self.down_since: datetime | None = None
+        self.last_disconnect: datetime | None = None
+        self.last_disconnect_reason: str | None = None
+        self.last_disconnect_source: str | None = None
+        self.last_outage_seconds: int | None = None
+
+    @property
+    def connected(self) -> bool:
+        """Whether the camera answered and nothing has failed since."""
+        return self.connected_since is not None
+
+    def _connection_ok(self) -> None:
+        now = dt_util.utcnow()
+        if self.down_since is not None:
+            self.last_outage_seconds = round((now - self.down_since).total_seconds())
+            _LOGGER.info(
+                "%s: connected again after %s seconds (%s)",
+                self.name,
+                self.last_outage_seconds,
+                self.last_disconnect_reason,
+            )
+            self.down_since = None
+        if self.connected_since is None:
+            self.connected_since = now
+
+    def _connection_lost(self, reason: str, source: str) -> None:
+        """Mark the camera as not connected; an outage keeps its first cause."""
+        if self.down_since is not None:
+            return
+        now = dt_util.utcnow()
+        self.down_since = now
+        self.connected_since = None
+        self.last_disconnect = now
+        self.last_disconnect_reason = reason
+        self.last_disconnect_source = source
 
     async def _async_update_data(self) -> dict[str, Any]:
         try:
             data = await self.api.get_state()
         except AuthenticationError as err:
+            self._connection_lost("auth", "poll")
             if auth_failed(self.hass, self.config_entry):
                 raise ConfigEntryAuthFailed(
                     f"Authentication failed on update: {err}"
                 ) from err
             raise UpdateFailed(f"Login rejected, trying again: {err}") from err
         except CameraError as err:
+            self._connection_lost(connection_reason(err), "poll")
             raise UpdateFailed(f"Error on update: {err}") from err
         auth_ok(self.hass, self.config_entry)
+        self._connection_ok()
         return data
 
     async def async_command(self, func: Callable[[], Awaitable[Any]], name: str) -> Any:
@@ -76,9 +126,16 @@ class TapoAlarmCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         only after it was rejected several times in a row.
         """
         try:
-            return await func()
-        except (CameraError, ValueError) as err:
+            result = await func()
+        except CameraError as err:
+            if (reason := connection_reason(err)) in UNREACHABLE_REASONS:
+                self._connection_lost(reason, "command")
+                self.async_update_listeners()
             raise HomeAssistantError(f"Error on {name}: {err}") from err
+        except ValueError as err:
+            raise HomeAssistantError(f"Error on {name}: {err}") from err
+        self._connection_ok()
+        return result
 
     async def _read_then_write(
         self, write: Callable[[dict[str, Any]], Awaitable[dict[str, Any]]], name: str
@@ -130,3 +187,5 @@ class TapoAlarmCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def async_reboot(self) -> None:
         """Reboot the camera. It is unreachable for a while, so no refresh."""
         await self.async_command(self.api.reboot, "reboot")
+        self._connection_lost("reboot", "reboot")
+        self.async_update_listeners()

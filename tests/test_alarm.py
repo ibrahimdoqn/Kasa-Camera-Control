@@ -527,22 +527,132 @@ async def test_unreachable_camera(hass: HomeAssistant) -> None:
     assert hass.states.get("switch.bahce_alarm").state == "off"
 
 
-async def test_connection_sensors_are_removed(hass: HomeAssistant) -> None:
-    """The connection sensors earlier versions created are removed."""
+def _refused() -> requests.ConnectionError:
+    """What pytapo raises while the camera restarts its services."""
+    try:
+        try:
+            raise ConnectionRefusedError(111, "Connection refused")
+        except ConnectionRefusedError as refused:
+            raise OSError("Failed to establish a new connection") from refused
+    except OSError as err:
+        return requests.ConnectionError(err)
+
+
+async def test_connection_diagnostics(hass: HomeAssistant) -> None:
+    cam = FakeTapo()
+    entry, _ = await _setup(hass, cam)
+    coordinator = entry.runtime_data
+
+    connection = hass.states.get("binary_sensor.bahce_connection")
+    assert connection.state == "on"
+    assert connection.attributes["last_disconnect"] is None
+    since = hass.states.get("sensor.bahce_connected_since")
+    assert since.state not in ("unknown", "unavailable")
+
+    # A failed poll: disconnected, the first cause is kept for the outage.
+    cam.fail = _refused()
+    await coordinator.async_refresh()
+    cam.fail = requests.ReadTimeout("timeout")
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    connection = hass.states.get("binary_sensor.bahce_connection")
+    assert connection.state == "off"
+    assert connection.attributes["last_disconnect_reason"] == "restarting"
+    assert connection.attributes["last_disconnect_source"] == "poll"
+    assert connection.attributes["down_since"] is not None
+    assert hass.states.get("sensor.bahce_connected_since").state == "unknown"
+    assert hass.states.get("switch.bahce_alarm").state == "unavailable"
+
+    # Back: connected again, from now.
+    cam.fail = None
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    connection = hass.states.get("binary_sensor.bahce_connection")
+    assert connection.state == "on"
+    assert connection.attributes["down_since"] is None
+    assert connection.attributes["last_outage_seconds"] is not None
+    assert hass.states.get("sensor.bahce_connected_since").state != "unknown"
+
+
+async def test_command_that_cannot_reach_the_camera(hass: HomeAssistant) -> None:
+    cam = FakeTapo()
+    entry, _ = await _setup(hass, cam)
+
+    # The camera answers with an error: still connected.
+    cam.fail = Exception("Error: -40106")
+    with pytest.raises(HomeAssistantError):
+        await _press(hass, "turn_on", "switch.bahce_alarm")
+    assert hass.states.get("binary_sensor.bahce_connection").state == "on"
+
+    # The camera cannot be reached: disconnected at once, before any poll.
+    cam.fail = requests.ConnectTimeout("timed out")
+    with pytest.raises(HomeAssistantError):
+        await _press(hass, "turn_on", "switch.bahce_alarm")
+    connection = hass.states.get("binary_sensor.bahce_connection")
+    assert connection.state == "off"
+    assert connection.attributes["last_disconnect_reason"] == "timeout"
+    assert connection.attributes["last_disconnect_source"] == "command"
+
+    cam.fail = None
+    await entry.runtime_data.async_refresh()
+    await hass.async_block_till_done()
+    assert hass.states.get("binary_sensor.bahce_connection").state == "on"
+
+
+async def test_reboot_disconnects(hass: HomeAssistant) -> None:
+    cam = FakeTapo()
+    entry, _ = await _setup(hass, cam)
+    await hass.services.async_call(
+        "button", "press", {"entity_id": "button.bahce_reboot"}, blocking=True
+    )
+    connection = hass.states.get("binary_sensor.bahce_connection")
+    assert connection.state == "off"
+    assert connection.attributes["last_disconnect_reason"] == "reboot"
+    assert hass.states.get("sensor.bahce_connected_since").state == "unknown"
+
+    await entry.runtime_data.async_refresh()
+    await hass.async_block_till_done()
+    assert hass.states.get("binary_sensor.bahce_connection").state == "on"
+
+
+def test_connection_reasons() -> None:
+    from custom_components.tapo_kasa_alarm.api import (
+        AuthenticationError,
+        CameraError,
+        _wrap,
+        connection_reason,
+    )
+
+    def wrapped(err: Exception) -> CameraError:
+        try:
+            raise _wrap(err) from err
+        except CameraError as camera_error:
+            return camera_error
+
+    assert connection_reason(wrapped(_refused())) == "restarting"
+    assert (
+        connection_reason(wrapped(requests.ConnectionError(OSError(113, "no route"))))
+        == "unreachable"
+    )
+    assert connection_reason(wrapped(requests.ReadTimeout("timeout"))) == "timeout"
+    assert connection_reason(wrapped(requests.ConnectTimeout("timeout"))) == "timeout"
+    assert connection_reason(AuthenticationError("bad")) == "auth"
+    assert connection_reason(wrapped(Exception("Error: -40106"))) == "error"
+
+
+async def test_disconnect_count_sensor_is_removed(hass: HomeAssistant) -> None:
+    """The disconnect count sensor earlier versions created is removed."""
     entry = MockConfigEntry(
         domain=DOMAIN, version=2, data=DATA, unique_id="aa:bb:cc:dd:ee:ff"
     )
     entry.add_to_hass(hass)
     registry = er.async_get(hass)
-    old = [
-        registry.async_get_or_create(
-            "sensor", DOMAIN, f"aa:bb:cc:dd:ee:ff_{key}", config_entry=entry
-        )
-        for key in ("connected_since", "disconnects")
-    ]
+    old = registry.async_get_or_create(
+        "sensor", DOMAIN, "aa:bb:cc:dd:ee:ff_disconnects", config_entry=entry
+    )
     with patch(CONNECT, return_value=FakeTapo()):
         await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
     assert entry.state is ConfigEntryState.LOADED
-    assert all(registry.async_get(entity.entity_id) is None for entity in old)
-    assert hass.states.get("button.bahce_reboot") is not None
+    assert registry.async_get(old.entity_id) is None
+    assert hass.states.get("sensor.bahce_connected_since") is not None

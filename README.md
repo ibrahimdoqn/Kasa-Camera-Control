@@ -21,6 +21,8 @@ Nasıl çalıştığının ayrıntıları: [ARCHITECTURE.md](ARCHITECTURE.md)
 | `switch.<kamera>_alarm_isigi` | Alarm çalınca ışık kullanılsın mı |
 | `switch.<kamera>_bildirimler` | Tapo uygulaması bildirimlerini açar/kapatır |
 | `button.<kamera>_yeniden_baslat` | Kamerayı yeniden başlatır (Tanılama bölümünde) |
+| `binary_sensor.<kamera>_baglanti` | Kamera bağlı mı; son kopmanın ayrıntıları (Tanılama bölümünde) |
+| `sensor.<kamera>_baglanti_kuruldu` | Kesintisiz bağlantının ne zamandır sürdüğü (Tanılama bölümünde) |
 
 - Ses veya ışıktan en az biri açık kalmalıdır; kamera bunu zorunlu tutar.
 - Varlık kimlikleri Home Assistant'ın diline göre oluşur. Örneğin İngilizce kurulumda `switch.<kamera>_alarm_sound` olur.
@@ -73,6 +75,24 @@ automation:
 ```
 
 Alarm zaten açıksa kameraya bir şey yazılmaz; otomasyonu gönül rahatlığıyla sık çalıştırabilirsiniz.
+
+## Bağlantı tanılama
+Her kameranın cihaz sayfasındaki **Tanılama** bölümünde:
+
+- **Bağlantı:** Kamera cevap veriyorsa *Bağlı*, vermiyorsa *Bağlantı kesildi*. Bağlantı şu durumlarda kesik sayılır: bir sorgu başarısız olursa, bir anahtar komutu kameraya ulaşamazsa ve **Yeniden başlat** düğmesine basılırsa. Sonraki başarılı sorguda tekrar *Bağlı* olur.
+- **Bağlantı kuruldu:** Kesintisiz bağlantının başladığı an; Home Assistant bunu "2 saat önce" gibi gösterir, yani kamera o kadar süredir sorunsuz. Bağlantı yokken *Bilinmiyor* görünür. Home Assistant yeniden başladığında ölçüm baştan başlar.
+
+**Bağlantı** sensörünün öznitelikleri son kopmayı anlatır:
+
+| Öznitelik | Anlamı |
+|---|---|
+| Son kopma | Zamanı |
+| Son kopma sebebi | *Bağlantı reddedildi* (kamera servisleri yeniden başlıyor), *Kamera ağda değil*, *Zaman aşımı*, *Giriş reddedildi*, *Kamera hata döndürdü* veya *Yeniden başlat düğmesi* |
+| Son kopmanın kaynağı | *Sorgu*, *Komut (anahtar)* veya *Yeniden başlatma* |
+| Son kesinti süresi (sn) | Kesintinin kaç saniye sürdüğü (bağlantı geri gelince yazılır) |
+| Kesinti başlangıcı | Şu an kesinti varsa başladığı zaman |
+
+Kamera, iki sorgu arasındaki süreden (varsayılan 5 saniye) kısa bir süre için çöküp geri gelirse bu görünmeyebilir. RTSP kaydınızdaki kopmalarla karşılaştırmak bu tür kısa çökmeleri de gösterir.
 
 ## Sorun giderme
 - **Anahtarlar sık sık "kullanılamıyor" oluyor:** Kamera o anda ağda değildir veya servislerini yeniden başlatıyordur. **Ping** entegrasyonuyla kameranın IP'si için bir sensör ekleyin; ping de düşüyorsa sorun Wi-Fi'da veya kameradadır.
