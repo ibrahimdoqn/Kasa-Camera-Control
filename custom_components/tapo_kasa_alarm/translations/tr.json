@@ -57,9 +57,6 @@
       },
       "notifications": {
         "name": "Bildirimler"
-      },
-      "debug_mode": {
-        "name": "Hata ayıklama modu"
       }
     },
     "button": {

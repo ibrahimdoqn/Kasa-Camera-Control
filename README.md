@@ -21,7 +21,6 @@ Tamamen **yerel** çalışır: kameralarla ev ağı içinden konuşur, TP-Link b
 | `switch.<kamera>_bildirimler` | Tapo uygulaması bildirimlerini açar/kapatır |
 | `button.<kamera>_yeniden_baslat` | Kamerayı yeniden başlatır (Tanılama bölümünde) |
 | `sensor.<kamera>_baglanti_kuruldu` | Bağlantının ne zaman kurulduğu ve ne zamandır sürdüğü (Tanılama bölümünde) |
-| `switch.<kamera>_hata_ayiklama_modu` | Ayrıntılı log kaydını açar/kapatır (Tanılama bölümünde) |
 | `sensor.<kamera>_kopma_sayisi` | Bağlantının kaç kez koptuğu ve son kopmanın ayrıntıları (Tanılama bölümünde) |
 
 - Ses veya ışıktan en az biri açık kalmalıdır; kamera bunu zorunlu tutar.
@@ -169,25 +168,6 @@ Her kameranın cihaz sayfasındaki **Tanılama** bölümünde iki sensör vardı
 
 **Kullanım:** Kopma zamanlarını alarm geçmişi, RTSP kaydı yapan sistemin log'u veya modemin log'u ile karşılaştırarak kameranın ne zaman ve neden koptuğunu görebilirsiniz.
 
-### Hata ayıklama modu
-Her kameranın **Tanılama** bölümündeki **Hata ayıklama modu** anahtarı, o kamerayla yapılan her şeyi ayrıntılı olarak log'a yazar.
-
-- **Kaydedilenler:**
-  - Kameraya giden her istek: sıra numarası, komutlar ve gönderilen içerik, kilit için bekleme süresi.
-  - Her cevap ve kaç saniye sürdüğü; hata olursa hatanın türü, sebebi (`reboot`, `unreachable`, `timeout` …) ve tüm alt hatalar.
-  - Her sorgunun başlangıcı, sonucu ve bir önceki sorguya göre değişen değerler (örneğin `alarm.enabled: 'off' -> 'on'`).
-  - Anahtar ve düğme basışları, ve kimin bastığı: `user_id` (kullanıcı), `parent_id` (otomasyon/betik), `context_id`.
-  - Komutların başlangıcı, bitişi ve süresi; hata olursa ayrıntısı.
-  - Oturum yenileme (oturumun yaşı), kurtarma adımları, bağlantı kopma ve geri gelme.
-  - Açılışta bağlantı: model, yazılım ve donanım sürümü, MAC, bağlantı ayarları, seçenekler.
-  - MAC ile IP arama sonuçları.
-- Her satır `[kamera_adı IP]` ile başlar. Saat, Home Assistant'ın log satırının başındadır.
-- Şifre hiçbir zaman yazılmaz.
-- Ayar kalıcıdır: Home Assistant yeniden başlasa da açık kalır ve açılıştaki bağlantı da kaydedilir.
-- Home Assistant normalde yalnızca uyarı ve hataları yazar. Mod açıkken entegrasyonun ayrıntılı kaydı (`custom_components.tapo_kasa_alarm.debug`) ayrıca açılır; tüm kameralarda kapatılınca normale döner. `configuration.yaml`'da bir şey değiştirmeniz gerekmez.
-- **Log'u almak için:** Ayarlar → Sistem → Günlükler → sağ üst menü → **Tam günlükleri göster** veya **Tam günlüğü indir**. Varsayılan günlük ekranı yalnızca uyarı ve hataları gösterir.
-- Mod çok log üretir (5 saniyede bir birkaç satır). Sorunu bulduktan sonra kapatın.
-
 ### Yeniden başlatma
 - python-kasa'nın yeniden başlatma komutu kameralarda çalışmadığı için TP-Link kameralarda bu düğmeyi göstermez.
 - Bu entegrasyon Tapo Control'ün kameralar için kullandığı `rebootDevice` komutunu gönderir. Düğme TP-Link'in "Yeniden başlat" düğmesiyle aynı türde ve aynı "Tanılama" bölümündedir.
@@ -213,7 +193,13 @@ Her kameranın **Tanılama** bölümündeki **Hata ayıklama modu** anahtarı, o
       not_from: unavailable
   ```
 - **Kamera zorlanıyor gibi:** Sorgulama aralığını 30 veya 60 saniyeye çıkarın. Bunun tek bedeli, kamerada yapılan değişikliklerin (örneğin Tapo uygulamasından) Home Assistant'ta daha geç görünmesidir.
-- **Ayrıntılı log:** Kameranın Tanılama bölümündeki **Hata ayıklama modu**nu açın (bkz. [Hata ayıklama modu](#hata-ayıklama-modu)). python-kasa kütüphanesinin iç kayıtları da gerekirse, Ayarlar → Cihazlar ve Hizmetler → Kasa Camera Control → **Hata ayıklama günlüğünü etkinleştir** kullanılabilir; bu, TP-Link entegrasyonundaki prizler dahil tüm python-kasa cihazlarının kaydını açar ve çok log üretir.
+- **Ayrıntılı log:** `configuration.yaml` dosyasına ekleyip Home Assistant'ı yeniden başlatın:
+  ```yaml
+  logger:
+    logs:
+      custom_components.tapo_kasa_alarm: debug
+  ```
+  python-kasa'nın kameraya giden istekleri de görmek için `kasa: debug` satırını ekleyin. Bu satır çok log üretir, sorunu bulduktan sonra kaldırın.
 
 ## Logo
 Logo, Tapo Control entegrasyonunun logosudur. Home Assistant 2026.3 ve sonrası logoyu `brand/` klasöründen gösterir. Daha eski sürümlerde logo yerine boş simge görünür.

@@ -17,7 +17,7 @@ from kasa.httpclient import get_cookie_jar
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME, Platform
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv, entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
@@ -28,8 +28,6 @@ from homeassistant.helpers.typing import ConfigType
 from .api import AuthenticationError, KasaException, TapoAlarmApi, connect_device
 from .const import (
     CONF_CONNECTION_PARAMETERS,
-    CONF_DEBUG,
-    DEBUG_LOGGER_NAME,
     CONF_SCAN_INTERVAL,
     CONF_SESSION_RENEW,
     DEFAULT_SESSION_RENEW,
@@ -106,19 +104,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: TapoAlarmConfigEntry) ->
     api = TapoAlarmApi(
         device, entry.options.get(CONF_SESSION_RENEW, DEFAULT_SESSION_RENEW)
     )
-    api.debug = bool(entry.options.get(CONF_DEBUG))
-    async_apply_debug_logging(hass)
-    api.dbg(
-        "connected: model=%s firmware=%s hardware=%s mac=%s connection=%s"
-        " session_renew=%smin scan_interval=%ss",
-        device.model,
-        device.hw_info.get("sw_ver"),
-        device.hw_info.get("hw_ver"),
-        device.mac,
-        connection_parameters,
-        api.session_renew_minutes,
-        entry.options.get(CONF_SCAN_INTERVAL),
-    )
     coordinator = TapoAlarmCoordinator(hass, entry, api)
     try:
         await coordinator.async_config_entry_first_refresh()
@@ -137,28 +122,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: TapoAlarmConfigEntry) -
     """Unload a config entry and close the camera session."""
     unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unloaded:
-        entry.runtime_data.api.dbg("unloading, closing the session")
-        entry.runtime_data.api.debug = False
         await entry.runtime_data.api.close()
-        async_apply_debug_logging(hass, exclude=entry.entry_id)
     return unloaded
-
-
-@callback
-def async_apply_debug_logging(hass: HomeAssistant, exclude: str | None = None) -> None:
-    """Turn the detailed debug log on while any camera has debug mode on.
-
-    Home Assistant normally only writes warnings and errors; the debug
-    logger gets its own level so the detailed lines reach the full log.
-    """
-    enabled = any(
-        entry.options.get(CONF_DEBUG)
-        for entry in hass.config_entries.async_entries(DOMAIN)
-        if entry.entry_id != exclude and not entry.disabled_by
-    )
-    logging.getLogger(DEBUG_LOGGER_NAME).setLevel(
-        logging.DEBUG if enabled else logging.NOTSET
-    )
 
 
 async def _async_options_updated(hass: HomeAssistant, entry: TapoAlarmConfigEntry) -> None:
@@ -170,19 +135,6 @@ async def _async_options_updated(hass: HomeAssistant, entry: TapoAlarmConfigEntr
     coordinator.update_interval = scan_interval(entry.options.get(CONF_SCAN_INTERVAL))
     coordinator.api.session_renew_minutes = entry.options.get(
         CONF_SESSION_RENEW, DEFAULT_SESSION_RENEW
-    )
-    debug = bool(entry.options.get(CONF_DEBUG))
-    if debug != coordinator.api.debug:
-        # Log the switch in both directions.
-        coordinator.api.debug = True
-        coordinator.api.dbg("debug mode %s", "on" if debug else "off")
-        coordinator.api.debug = debug
-    async_apply_debug_logging(hass)
-    coordinator.api.dbg(
-        "options: scan_interval=%s session_renew=%s discovery=%s",
-        entry.options.get(CONF_SCAN_INTERVAL),
-        coordinator.api.session_renew_minutes,
-        entry.options.get("discovery"),
     )
 
 

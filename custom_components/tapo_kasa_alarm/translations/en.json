@@ -57,9 +57,6 @@
       },
       "notifications": {
         "name": "Notifications"
-      },
-      "debug_mode": {
-        "name": "Debug mode"
       }
     },
     "button": {

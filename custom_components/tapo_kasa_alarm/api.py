@@ -9,8 +9,6 @@ is serialized, so the camera never sees parallel logins.
 from __future__ import annotations
 
 import asyncio
-import itertools
-import json
 import logging
 import time
 from typing import Any
@@ -31,7 +29,6 @@ from kasa.exceptions import SmartErrorCode, _ConnectionError
 
 from .const import (
     ALARM_SECTION,
-    DEBUG_LOGGER_NAME,
     DEFAULT_TIMEOUT,
     DISCOVERY_TIMEOUT,
     MODE_LIGHT,
@@ -40,31 +37,6 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
-DEBUG_LOGGER = logging.getLogger(DEBUG_LOGGER_NAME)
-_REQUEST_IDS = itertools.count(1)
-
-
-def debug_json(value: Any) -> str:
-    """Compact JSON for the debug log (camera error codes by name)."""
-
-    def default(obj: Any) -> Any:
-        if isinstance(obj, SmartErrorCode):
-            return f"<{obj.name}>"
-        return str(obj)
-
-    return json.dumps(value, default=default, ensure_ascii=False, sort_keys=True)
-
-
-def debug_error(err: BaseException) -> str:
-    """Error type, message and the chain of causes, for the debug log."""
-    parts = []
-    seen: set[int] = set()
-    item: BaseException | None = err
-    while item is not None and id(item) not in seen:
-        seen.add(id(item))
-        parts.append(f"{type(item).__name__}: {item!r}")
-        item = item.__cause__ or item.__context__
-    return " <- ".join(parts)
 
 __all__ = [
     "AuthenticationError",
@@ -252,47 +224,11 @@ class TapoAlarmApi:
         # The device was just connected, so a fresh session exists.
         self._session_started = time.monotonic()
         self.session_renew_minutes = session_renew_minutes
-        # Debug mode: log every request, answer, timing and error.
-        self.debug = False
-        self.name = device.alias or device.host
-
-    def dbg(self, msg: str, *args: Any) -> None:
-        """Write a debug-mode log line for this camera."""
-        if self.debug:
-            DEBUG_LOGGER.debug("[%s %s] " + msg, self.name, self.device.host, *args)
 
     async def _query(self, request: dict[str, Any]) -> dict[str, Any]:
-        request_id = next(_REQUEST_IDS)
-        waited = time.monotonic()
         async with self._lock:
-            if self.debug:
-                self.dbg(
-                    "#%s request %s (waited %.3fs for the lock) %s",
-                    request_id,
-                    ", ".join(request),
-                    time.monotonic() - waited,
-                    debug_json(request),
-                )
             await self._renew_session_if_due()
-            started = time.monotonic()
-            try:
-                response = await self.device.protocol.query(request)
-            except Exception as err:
-                self.dbg(
-                    "#%s failed after %.3fs (%s): %s",
-                    request_id,
-                    time.monotonic() - started,
-                    disconnect_reason(err),
-                    debug_error(err),
-                )
-                raise
-            self.dbg(
-                "#%s answer after %.3fs %s",
-                request_id,
-                time.monotonic() - started,
-                debug_json(response),
-            )
-            return response
+            return await self.device.protocol.query(request)
 
     async def _renew_session_if_due(self) -> None:
         """Log in again before the camera ends the session.
@@ -309,11 +245,6 @@ class TapoAlarmApi:
         if now - self._session_started < self.session_renew_minutes * 60:
             return
         _LOGGER.debug("Renewing the session with %s", self.device.host)
-        self.dbg(
-            "renewing the session (%.0fs old, renew every %s min); the next request logs in again",
-            now - self._session_started,
-            self.session_renew_minutes,
-        )
         await self.device.protocol.close()
         self._session_started = now
 
@@ -348,7 +279,6 @@ class TapoAlarmApi:
         except (AuthenticationError, TimeoutError, _ConnectionError):
             raise
         except Exception as err:  # noqa: BLE001 - same as python-kasa's update
-            self.dbg("recovery: asking %s again one by one", ", ".join(request))
             _LOGGER.warning(
                 "Error querying %s for %s, asking again one by one: %s",
                 self.device.host,

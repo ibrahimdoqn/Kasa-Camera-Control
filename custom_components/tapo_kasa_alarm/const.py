@@ -23,11 +23,6 @@ CONF_SESSION_RENEW = "session_renew"
 DEFAULT_SESSION_RENEW = 8  # minutes
 MAX_SESSION_RENEW = 60
 
-# Debug mode (switch in the diagnostics section, stored in the options):
-# detailed logs of everything the integration does with the camera.
-CONF_DEBUG = "debug"
-DEBUG_LOGGER_NAME = "custom_components.tapo_kasa_alarm.debug"
-
 # Same delay as the TP-Link integration before refreshing after a command.
 REQUEST_REFRESH_DELAY = 0.35
 
