@@ -26,6 +26,7 @@ from homeassistant.helpers.selector import (
 from .api import AuthenticationError, CameraError, basic_info, connect
 from .const import (
     CONF_CLOUD_PASSWORD,
+    CONF_IS_KLAP,
     CONF_SCAN_INTERVAL,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
@@ -50,6 +51,7 @@ def _validate(hass: HomeAssistant, host: str, cloud_password: str) -> dict[str, 
         return {
             "unique_id": format_mac(mac) if mac else info.get("dev_id") or host,
             "title": info.get("device_alias") or info.get("device_model") or host,
+            CONF_IS_KLAP: bool(controller.isKLAP),
         }
     finally:
         try:
@@ -92,7 +94,10 @@ class TapoAlarmConfigFlow(ConfigFlow, domain=DOMAIN):
                 self._abort_if_unique_id_configured(
                     updates={CONF_HOST: user_input[CONF_HOST]}
                 )
-                return self.async_create_entry(title=found["title"], data=user_input)
+                return self.async_create_entry(
+                    title=found["title"],
+                    data={**user_input, CONF_IS_KLAP: found[CONF_IS_KLAP]},
+                )
 
         return self.async_show_form(
             step_id="user",
@@ -123,6 +128,7 @@ class TapoAlarmConfigFlow(ConfigFlow, domain=DOMAIN):
                     data={
                         CONF_HOST: entry.data[CONF_HOST],
                         CONF_CLOUD_PASSWORD: user_input[CONF_CLOUD_PASSWORD],
+                        CONF_IS_KLAP: found[CONF_IS_KLAP],
                     },
                 )
 
@@ -145,7 +151,9 @@ class TapoAlarmConfigFlow(ConfigFlow, domain=DOMAIN):
             if found is not None:
                 await self.async_set_unique_id(found["unique_id"])
                 self._abort_if_unique_id_mismatch(reason="wrong_camera")
-                return self.async_update_reload_and_abort(entry, data=user_input)
+                return self.async_update_reload_and_abort(
+                    entry, data={**user_input, CONF_IS_KLAP: found[CONF_IS_KLAP]}
+                )
 
         return self.async_show_form(
             step_id="reconfigure",

@@ -9,6 +9,14 @@ DOMAIN = "tapo_kasa_alarm"
 # Login like Tapo Control with a cloud password: "admin" and the TP-Link
 # cloud password.
 CONF_CLOUD_PASSWORD = "cloud_password"
+# Whether the camera uses the KLAP login, found once and saved like Tapo
+# Control does.
+CONF_IS_KLAP = "is_klap"
+
+# Like Tapo Control: a rejected login ("Invalid authentication data") is
+# tried again this many times before Home Assistant asks for the password.
+# Cameras can reject a valid login for a moment, e.g. while they restart.
+AUTH_RETRIES = 3
 
 CONF_SCAN_INTERVAL = "scan_interval"
 DEFAULT_SCAN_INTERVAL = 5

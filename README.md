@@ -32,7 +32,9 @@ Tamamen **yerel** çalışır: kameralarla ev ağı içinden konuşur, TP-Link b
 2. Depo: `https://github.com/ibrahimdoqn/Kasa-Camera-Control`, kategori: **Integration**
 3. **Kasa Camera Control** kurun ve Home Assistant'ı yeniden başlatın.
 4. Ayarlar → Cihazlar ve Hizmetler → **Entegrasyon ekle** → *Kasa Camera Control*
-5. Kameranın IP adresini ve **TP-Link bulut şifresini** (Tapo uygulamasına girdiğiniz hesabın şifresi) girin. Kameraya bu şifreyle yerel olarak `admin` kullanıcısıyla girilir; Tapo Control'ün bulut şifresiyle girdiği gibi.
+5. Açılan formu doldurun:
+   - **IP adresi:** Kameranın ev ağındaki adresi, örneğin `192.168.1.50`. Tapo uygulamasında kamera → Ayarlar → Cihaz bilgisi bölümünde görünür.
+   - **TP-Link hesap şifresi:** Tapo uygulamasına giriş yaptığınız hesabın şifresi (bulut şifresi). Kameraya bu şifreyle yerel olarak `admin` kullanıcısıyla girilir; Tapo Control'ün bulut şifresiyle girdiği gibi.
 6. Her kamera için 4. ve 5. adımları tekrarlayın.
 
 > Kameralara sabit IP (DHCP rezervasyonu) verin. 2.0.0'da MAC ile IP arama yok; IP değişirse kameranın **Yeniden yapılandır** menüsünden yeni IP'yi girin.
@@ -95,7 +97,7 @@ Kameraya Tapo Control'ün `registerController`'ındaki ayarlarla bağlanılır:
 - **pytapo 3.4.19:** Tapo Control'ün kullandığı sürüm. pytapo bloklayan bir kütüphane olduğu için her çağrı Home Assistant'ın arka plan iş parçacıklarında çalışır; Home Assistant'ın ana döngüsünü bekletmez.
 - **Giriş:** `admin` + TP-Link bulut şifresi. Tapo Control'e bulut şifresi girildiğinde de böyle girer.
 - **Her istek yeni HTTPS bağlantısıyla** gider (`reuseSession=False`), Tapo Control'deki gibi. Kamera oturumu (`stok`) ise korunur, her istekte yeniden giriş yapılmaz.
-- **KLAP:** pytapo her açılışta kameranın giriş türünü (KLAP mı değil mi) kendisi bulur.
+- **KLAP:** Kameranın giriş türü (KLAP mı değil mi) ilk bağlantıda bulunur ve kaydedilir; sonraki açılışlarda yeniden aranmaz. Tapo Control de böyle yapar. 2.0.1'den gelen kameralarda ilk açılışta bir kez bulunup kaydedilir.
 - **MAC kontrolü:** Bağlanılan cihazın MAC adresi kayıtlı kamerayla karşılaştırılır. O IP'de başka bir cihaz varsa kullanılmaz, kameralar karışmaz.
 - **Zaman aşımı:** 10 saniye (pytapo'nun varsayılanı).
 - pytapo kamera başına **tek oturum** tutar ve istekleri sırayla gönderir.
@@ -133,7 +135,7 @@ Kameraya Tapo Control'ün `registerController`'ındaki ayarlarla bağlanılır:
 - Bağlantı hatasında pytapo oturumu sıfırlar, 1 saniye bekler ve isteği bir kez daha dener.
 - Kamera oturumun dolduğunu söylerse (`-40401`) pytapo yeniden giriş yapıp isteği bir kez tekrarlar.
 - Kamera yine cevap vermezse anahtarlar "kullanılamıyor" görünür ve bir sonraki sorgu zamanı beklenir.
-- Giriş reddedilirse ("Invalid authentication data") Home Assistant yeniden giriş bilgisi ister. Kamera çok sayıda başarısız girişten sonra kendini geçici olarak kilitlerse ("Temporary Suspension") yeniden bilgi istenmez, kilit açılınca tekrar denenir.
+- Giriş reddedilirse ("Invalid authentication data") hemen şifre istenmez. Kameralar geçerli bir girişi de kısa süre reddedebilir, örneğin yeniden başlarken. Tapo Control'deki gibi art arda 3 red tolere edilir: kurulumda Home Assistant tekrar dener, sorguda anahtarlar o süre "kullanılamıyor" görünür. **4. red üst üste gelirse** Home Assistant şifreyi yeniden ister. Arada bir başarılı sorgu sayacı sıfırlar. Komutlar (anahtara basma) şifre istemez; red olursa ekranda hata gösterilir. Kamera çok sayıda başarısız girişten sonra kendini geçici olarak kilitlerse ("Temporary Suspension") yeniden bilgi istenmez, kilit açılınca tekrar denenir.
 
 ### Bağlantı tanılama
 Her kameranın cihaz sayfasındaki **Tanılama** bölümünde iki sensör vardır. Kameraya ek istek göndermezler; entegrasyonun zaten gördüğünü gösterirler.

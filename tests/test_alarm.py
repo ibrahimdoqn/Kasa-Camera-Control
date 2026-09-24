@@ -13,11 +13,12 @@ import requests
 
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.util import dt as dt_util
 
 from custom_components.tapo_kasa_alarm.const import DOMAIN
 
-DATA = {"host": "192.168.1.50", "cloud_password": "cloudpw"}
+DATA = {"host": "192.168.1.50", "cloud_password": "cloudpw", "is_klap": False}
 CONNECT = "custom_components.tapo_kasa_alarm.connect"
 
 
@@ -232,11 +233,12 @@ def test_login_like_tapo_control() -> None:
     from custom_components.tapo_kasa_alarm.api import connect
 
     with patch("custom_components.tapo_kasa_alarm.api.Tapo") as tapo:
-        connect(None, "1.2.3.4", "cloudpw")
+        connect(None, "1.2.3.4", "cloudpw", False)
         args, kwargs = tapo.call_args
         assert args == ("1.2.3.4", "admin", "cloudpw", "cloudpw")
         assert kwargs["reuseSession"] is False
         assert kwargs["retryStok"] is False
+        assert kwargs["isKLAP"] is False
 
 
 def test_login_errors() -> None:
@@ -276,7 +278,7 @@ async def test_config_flow(hass: HomeAssistant) -> None:
     assert result["title"] == "Bahce"
     assert result["result"].unique_id == "aa:bb:cc:dd:ee:ff"
     assert result["result"].version == 2
-    assert result["result"].data == user_input
+    assert result["result"].data == {**user_input, "is_klap": False}
     assert connect.call_args.args[1:] == ("192.168.1.50", "cloudpw")
 
 
@@ -319,7 +321,8 @@ async def test_migrate_from_kasa(hass: HomeAssistant) -> None:
     assert entry.version == 2
     assert entry.data == DATA
     assert entry.options == {"scan_interval": 10}
-    assert connect.call_args.args[1:] == ("192.168.1.50", "cloudpw")
+    # The login type is found on the first connection and saved.
+    assert connect.call_args.args[1:] == ("192.168.1.50", "cloudpw", None)
     # Entity IDs stay the same.
     assert hass.states.get("switch.bahce_alarm") is not None
 
@@ -365,7 +368,7 @@ async def test_reconfigure(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
     assert result["reason"] == "reconfigure_successful"
-    assert entry.data == {"host": "192.168.1.51", "cloud_password": "new"}
+    assert entry.data == {"host": "192.168.1.51", "cloud_password": "new", "is_klap": False}
 
     # Another camera at the new IP is not saved.
     result = await entry.start_reconfigure_flow(hass)
@@ -421,17 +424,54 @@ def test_alarm_modes_follow_enabled_flags() -> None:
     ) == ["light", "sound"]
 
 
-async def test_authentication_error_starts_reauth(hass: HomeAssistant) -> None:
+async def test_rejected_login_on_setup_is_tried_again(hass: HomeAssistant) -> None:
+    """Like Tapo Control: the password is asked for on the 4th rejection in a row."""
     from custom_components.tapo_kasa_alarm.api import AuthenticationError
 
     entry = MockConfigEntry(
         domain=DOMAIN, version=2, data=DATA, unique_id="aa:bb:cc:dd:ee:ff"
     )
     entry.add_to_hass(hass)
-    with patch(CONNECT, side_effect=AuthenticationError("bad")):
+    with patch(CONNECT, side_effect=AuthenticationError("Invalid authentication data")):
         await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
+        for _ in range(3):
+            assert entry.state is ConfigEntryState.SETUP_RETRY
+            assert not hass.config_entries.flow.async_progress()
+            await hass.config_entries.async_reload(entry.entry_id)
+            await hass.async_block_till_done()
     assert entry.state is ConfigEntryState.SETUP_ERROR
+    flows = hass.config_entries.flow.async_progress()
+    assert [flow["context"]["source"] for flow in flows] == ["reauth"]
+
+
+async def test_rejected_login_on_poll_is_tried_again(hass: HomeAssistant) -> None:
+    cam = FakeTapo()
+    entry, _ = await _setup(hass, cam)
+    coordinator = entry.runtime_data
+
+    # A rejected command does not ask for the password.
+    cam.fail = Exception("Invalid authentication data")
+    with pytest.raises(HomeAssistantError):
+        await _press(hass, "turn_on", "switch.bahce_alarm")
+    assert not hass.config_entries.flow.async_progress()
+
+    for _ in range(3):
+        await coordinator.async_refresh()
+        await hass.async_block_till_done()
+        assert not hass.config_entries.flow.async_progress()
+    # A successful poll in between starts the count again.
+    cam.fail = None
+    await coordinator.async_refresh()
+    cam.fail = Exception("Invalid authentication data")
+    for _ in range(3):
+        await coordinator.async_refresh()
+        await hass.async_block_till_done()
+        assert not hass.config_entries.flow.async_progress()
+    assert hass.states.get("switch.bahce_alarm").state == "unavailable"
+
+    await coordinator.async_refresh()  # 4th in a row
+    await hass.async_block_till_done()
     flows = hass.config_entries.flow.async_progress()
     assert [flow["context"]["source"] for flow in flows] == ["reauth"]
 

@@ -2,39 +2,50 @@
   "config": {
     "step": {
       "user": {
-        "title": "Tapo kamera",
-        "description": "Tapo uygulamasında kullandığınız TP-Link hesabının şifresini girin. Kameraya bu şifreyle yerel olarak \"admin\" kullanıcısıyla girilir; Tapo Control'ün bulut şifresiyle girdiği gibi.",
+        "title": "Tapo kamera ekle",
+        "description": "Kameranın ev ağınızdaki IP adresini ve Tapo uygulamasına giriş yaptığınız TP-Link hesabının şifresini girin.\n\nKameraya bu şifreyle doğrudan ev ağınız içinden bağlanılır; TP-Link sunucularına bağlanılmaz.",
         "data": {
-          "host": "Host / IP",
-          "cloud_password": "TP-Link bulut şifresi"
+          "host": "IP adresi",
+          "cloud_password": "TP-Link hesap şifresi"
+        },
+        "data_description": {
+          "host": "Kameranın ev ağındaki IP adresi, örneğin 192.168.1.50. Tapo uygulamasında kamera → Ayarlar → Cihaz bilgisi bölümünde görünür. Modeminizden kameraya sabit IP vermeniz önerilir.",
+          "cloud_password": "Tapo uygulamasına giriş yaparken kullandığınız şifre. Kamera bu şifreyi yerel girişte \"admin\" kullanıcısı için kabul eder; Tapo Control de bulut şifresiyle böyle girer."
         }
       },
       "reauth_confirm": {
-        "title": "Yeniden kimlik doğrulama",
-        "description": "Tapo uygulamasında kullandığınız TP-Link hesabının şifresini girin. Kameraya bu şifreyle yerel olarak \"admin\" kullanıcısıyla girilir; Tapo Control'ün bulut şifresiyle girdiği gibi.",
+        "title": "Şifreyi yeniden girin",
+        "description": "Kamera şifreyi art arda kabul etmedi. TP-Link hesabınızın şifresini değiştirdiyseniz yeni şifreyi girin.",
         "data": {
-          "cloud_password": "TP-Link bulut şifresi"
+          "cloud_password": "TP-Link hesap şifresi"
+        },
+        "data_description": {
+          "cloud_password": "Tapo uygulamasına giriş yaparken kullandığınız şifre. Kamera bu şifreyi yerel girişte \"admin\" kullanıcısı için kabul eder; Tapo Control de bulut şifresiyle böyle girer."
         }
       },
       "reconfigure": {
-        "title": "Yeniden yapılandır",
-        "description": "Tapo uygulamasında kullandığınız TP-Link hesabının şifresini girin. Kameraya bu şifreyle yerel olarak \"admin\" kullanıcısıyla girilir; Tapo Control'ün bulut şifresiyle girdiği gibi.",
+        "title": "Kamerayı yeniden yapılandır",
+        "description": "Kameranın IP adresini veya TP-Link hesap şifresini değiştirin. Yeni IP adresinde başka bir kamera cevap verirse değişiklik kaydedilmez.",
         "data": {
-          "host": "Host / IP",
-          "cloud_password": "TP-Link bulut şifresi"
+          "host": "IP adresi",
+          "cloud_password": "TP-Link hesap şifresi"
+        },
+        "data_description": {
+          "host": "Kameranın ev ağındaki IP adresi, örneğin 192.168.1.50. Tapo uygulamasında kamera → Ayarlar → Cihaz bilgisi bölümünde görünür. Modeminizden kameraya sabit IP vermeniz önerilir.",
+          "cloud_password": "Tapo uygulamasına giriş yaparken kullandığınız şifre. Kamera bu şifreyi yerel girişte \"admin\" kullanıcısı için kabul eder; Tapo Control de bulut şifresiyle böyle girer."
         }
       }
     },
     "error": {
-      "invalid_auth": "Geçersiz kullanıcı adı veya şifre",
-      "cannot_connect": "Kameraya bağlanılamadı",
-      "unknown": "Beklenmeyen hata"
+      "invalid_auth": "Şifre kabul edilmedi. Tapo uygulamasına giriş yaptığınız TP-Link hesabının şifresini girin.",
+      "cannot_connect": "Kameraya bağlanılamadı. IP adresini ve kameranın açık ve ağa bağlı olduğunu kontrol edin.",
+      "unknown": "Beklenmeyen bir hata oluştu. Ayrıntılar için Home Assistant log'una bakın."
     },
     "abort": {
-      "already_configured": "Kamera zaten ekli",
-      "reauth_successful": "Kimlik doğrulama başarılı",
-      "wrong_camera": "Bu IP adresinde başka bir kamera cevap veriyor",
-      "reconfigure_successful": "Yeniden yapılandırma başarılı"
+      "already_configured": "Bu kamera zaten ekli.",
+      "reauth_successful": "Şifre güncellendi.",
+      "reconfigure_successful": "Kamera ayarları güncellendi.",
+      "wrong_camera": "Bu IP adresinde başka bir kamera cevap veriyor."
     }
   },
   "options": {

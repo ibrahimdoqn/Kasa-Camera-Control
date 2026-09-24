@@ -19,9 +19,33 @@ from .api import (
     TapoAlarmApi,
     disconnect_reason,
 )
-from .const import CONF_SCAN_INTERVAL, MODE_LIGHT, MODE_SOUND, scan_interval
+from .const import (
+    AUTH_RETRIES,
+    CONF_SCAN_INTERVAL,
+    DOMAIN,
+    MODE_LIGHT,
+    MODE_SOUND,
+    scan_interval,
+)
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def auth_failed(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Count a rejected login; True once it was rejected too often in a row.
+
+    Like Tapo Control, the password is only asked for again after the
+    login was rejected more than AUTH_RETRIES times in a row. The count
+    is kept across setup retries and reset by the next successful poll.
+    """
+    failures = hass.data.setdefault(DOMAIN, {})
+    failures[entry.entry_id] = failures.get(entry.entry_id, 0) + 1
+    return failures[entry.entry_id] > AUTH_RETRIES
+
+
+def auth_ok(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Forget earlier rejected logins."""
+    hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
 
 
 class TapoAlarmCoordinator(DataUpdateCoordinator[dict[str, Any]]):
@@ -57,10 +81,15 @@ class TapoAlarmCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             data = await self.api.get_state()
         except AuthenticationError as err:
             self._connection_lost(err)
-            raise ConfigEntryAuthFailed(f"Authentication failed on update: {err}") from err
+            if auth_failed(self.hass, self.config_entry):
+                raise ConfigEntryAuthFailed(
+                    f"Authentication failed on update: {err}"
+                ) from err
+            raise UpdateFailed(f"Login rejected, trying again: {err}") from err
         except CameraError as err:
             self._connection_lost(err)
             raise UpdateFailed(f"Error on update: {err}") from err
+        auth_ok(self.hass, self.config_entry)
         self._connection_ok()
         return data
 
@@ -90,12 +119,13 @@ class TapoAlarmCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.connected_since = now
 
     async def async_command(self, func: Callable[[], Awaitable[Any]], name: str) -> Any:
-        """Run a command and map its errors."""
+        """Run a command and map its errors.
+
+        A rejected login is left to the polls, which ask for the password
+        only after it was rejected several times in a row.
+        """
         try:
             return await func()
-        except AuthenticationError as err:
-            self.config_entry.async_start_reauth(self.hass)
-            raise HomeAssistantError(f"Authentication failed on {name}: {err}") from err
         except (CameraError, ValueError) as err:
             raise HomeAssistantError(f"Error on {name}: {err}") from err
 

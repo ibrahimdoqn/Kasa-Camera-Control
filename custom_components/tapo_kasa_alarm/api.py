@@ -48,6 +48,7 @@ def connect(
     hass: HomeAssistant | None,
     host: str,
     cloud_password: str,
+    is_klap: bool | None = None,
 ) -> Tapo:
     """Log in to the camera the way Tapo Control does (blocking).
 
@@ -65,6 +66,7 @@ def connect(
             printDebugInformation=_PYTAPO_LOGGER.debug,
             printWarnInformation=_PYTAPO_LOGGER.warning,
             retryStok=False,
+            isKLAP=is_klap,
             hass=hass,
         )
     except Exception as err:  # noqa: BLE001 - pytapo raises plain exceptions

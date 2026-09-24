@@ -2,39 +2,50 @@
   "config": {
     "step": {
       "user": {
-        "title": "Tapo camera",
-        "description": "Enter the password of the TP-Link account you use in the Tapo app. The camera is logged in to locally as \"admin\" with it, like Tapo Control does with a cloud password.",
+        "title": "Add a Tapo camera",
+        "description": "Enter the camera's IP address on your home network and the password of the TP-Link account you log in to the Tapo app with.\n\nThe camera is reached directly on your home network with this password; TP-Link's servers are not contacted.",
         "data": {
-          "host": "Host / IP",
-          "cloud_password": "TP-Link cloud password"
+          "host": "IP address",
+          "cloud_password": "TP-Link account password"
+        },
+        "data_description": {
+          "host": "The camera's IP address on your home network, e.g. 192.168.1.50. The Tapo app shows it under camera → Settings → Device info. A fixed IP address (DHCP reservation) is recommended.",
+          "cloud_password": "The password you log in to the Tapo app with. The camera accepts it locally for the \"admin\" user; Tapo Control logs in the same way with a cloud password."
         }
       },
       "reauth_confirm": {
-        "title": "Re-authenticate",
-        "description": "Enter the password of the TP-Link account you use in the Tapo app. The camera is logged in to locally as \"admin\" with it, like Tapo Control does with a cloud password.",
+        "title": "Enter the password again",
+        "description": "The camera rejected the password several times in a row. If you changed your TP-Link account password, enter the new one.",
         "data": {
-          "cloud_password": "TP-Link cloud password"
+          "cloud_password": "TP-Link account password"
+        },
+        "data_description": {
+          "cloud_password": "The password you log in to the Tapo app with. The camera accepts it locally for the \"admin\" user; Tapo Control logs in the same way with a cloud password."
         }
       },
       "reconfigure": {
-        "title": "Reconfigure",
-        "description": "Enter the password of the TP-Link account you use in the Tapo app. The camera is logged in to locally as \"admin\" with it, like Tapo Control does with a cloud password.",
+        "title": "Reconfigure the camera",
+        "description": "Change the camera's IP address or TP-Link account password. If a different camera answers at the new IP address, nothing is saved.",
         "data": {
-          "host": "Host / IP",
-          "cloud_password": "TP-Link cloud password"
+          "host": "IP address",
+          "cloud_password": "TP-Link account password"
+        },
+        "data_description": {
+          "host": "The camera's IP address on your home network, e.g. 192.168.1.50. The Tapo app shows it under camera → Settings → Device info. A fixed IP address (DHCP reservation) is recommended.",
+          "cloud_password": "The password you log in to the Tapo app with. The camera accepts it locally for the \"admin\" user; Tapo Control logs in the same way with a cloud password."
         }
       }
     },
     "error": {
-      "invalid_auth": "Invalid credentials",
-      "cannot_connect": "Cannot connect to the camera",
-      "unknown": "Unexpected error"
+      "invalid_auth": "The password was not accepted. Enter the password of the TP-Link account you log in to the Tapo app with.",
+      "cannot_connect": "Cannot connect to the camera. Check the IP address and that the camera is on and connected.",
+      "unknown": "Unexpected error. See the Home Assistant log for details."
     },
     "abort": {
-      "already_configured": "Camera is already configured",
-      "reauth_successful": "Re-authentication successful",
-      "wrong_camera": "A different camera answers at this IP address",
-      "reconfigure_successful": "Reconfiguration successful"
+      "already_configured": "This camera is already added.",
+      "reauth_successful": "Password updated.",
+      "reconfigure_successful": "Camera settings updated.",
+      "wrong_camera": "A different camera answers at this IP address."
     }
   },
   "options": {

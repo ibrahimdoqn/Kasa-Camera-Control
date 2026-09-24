@@ -17,8 +17,8 @@ from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers.device_registry import format_mac
 
 from .api import AuthenticationError, CameraError, TapoAlarmApi, basic_info, connect
-from .const import CONF_CLOUD_PASSWORD, CONF_SCAN_INTERVAL, scan_interval
-from .coordinator import TapoAlarmCoordinator
+from .const import CONF_CLOUD_PASSWORD, CONF_IS_KLAP, CONF_SCAN_INTERVAL, scan_interval
+from .coordinator import TapoAlarmCoordinator, auth_failed
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -62,11 +62,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: TapoAlarmConfigEntry) ->
             hass,
             host,
             entry.data[CONF_CLOUD_PASSWORD],
+            entry.data.get(CONF_IS_KLAP),
         )
     except AuthenticationError as err:
-        raise ConfigEntryAuthFailed(str(err)) from err
+        # Like Tapo Control: try again a few times before asking.
+        if auth_failed(hass, entry):
+            raise ConfigEntryAuthFailed(str(err)) from err
+        raise ConfigEntryNotReady(f"Login rejected, trying again: {err}") from err
     except CameraError as err:
         raise ConfigEntryNotReady(str(err)) from err
+
+    if entry.data.get(CONF_IS_KLAP) is None:
+        # Found by pytapo on this first connection; saved like Tapo Control
+        # does, so later setups skip the check.
+        hass.config_entries.async_update_entry(
+            entry, data={**entry.data, CONF_IS_KLAP: bool(controller.isKLAP)}
+        )
 
     api = TapoAlarmApi(hass, controller, host)
     mac = basic_info(controller).get("mac")
