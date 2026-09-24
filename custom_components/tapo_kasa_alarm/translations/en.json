@@ -3,29 +3,54 @@
     "step": {
       "user": {
         "title": "Tapo camera",
-        "description": "Use the same TP-Link cloud account (e-mail / password) that the Tapo app and Home Assistant's TP-Link integration use.",
+        "description": "Log in like Tapo Control: either the camera account (Tapo app → camera → Settings → Advanced settings → Camera account), or leave it empty and enter the TP-Link cloud password (the camera is then logged in to as \"admin\").",
         "data": {
           "host": "Host / IP",
-          "username": "TP-Link account e-mail",
-          "password": "Password"
+          "username": "Camera account username",
+          "password": "Camera account password",
+          "cloud_password": "TP-Link cloud password (optional)"
+        },
+        "data_description": {
+          "cloud_password": "When set, it is used instead of the camera account, like Tapo Control."
         }
       },
       "reauth_confirm": {
         "title": "Re-authenticate",
+        "description": "Log in like Tapo Control: either the camera account (Tapo app → camera → Settings → Advanced settings → Camera account), or leave it empty and enter the TP-Link cloud password (the camera is then logged in to as \"admin\").",
         "data": {
-          "username": "TP-Link account e-mail",
-          "password": "Password"
+          "username": "Camera account username",
+          "password": "Camera account password",
+          "cloud_password": "TP-Link cloud password (optional)"
+        },
+        "data_description": {
+          "cloud_password": "When set, it is used instead of the camera account, like Tapo Control."
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigure",
+        "description": "Log in like Tapo Control: either the camera account (Tapo app → camera → Settings → Advanced settings → Camera account), or leave it empty and enter the TP-Link cloud password (the camera is then logged in to as \"admin\").",
+        "data": {
+          "host": "Host / IP",
+          "username": "Camera account username",
+          "password": "Camera account password",
+          "cloud_password": "TP-Link cloud password (optional)"
+        },
+        "data_description": {
+          "cloud_password": "When set, it is used instead of the camera account, like Tapo Control."
         }
       }
     },
     "error": {
       "invalid_auth": "Invalid credentials",
       "cannot_connect": "Cannot connect to the camera",
-      "unknown": "Unexpected error"
+      "unknown": "Unexpected error",
+      "missing_credentials": "Enter a camera account username and password, or the TP-Link cloud password"
     },
     "abort": {
       "already_configured": "Camera is already configured",
-      "reauth_successful": "Re-authentication successful"
+      "reauth_successful": "Re-authentication successful",
+      "wrong_camera": "A different camera answers at this IP address",
+      "reconfigure_successful": "Reconfiguration successful"
     }
   },
   "options": {
@@ -33,13 +58,11 @@
       "init": {
         "data": {
           "scan_interval": "Polling interval (seconds)",
-          "session_renew": "Renew the session every (minutes)",
-          "discovery": "Follow the camera to a new IP address (MAC discovery)"
+          "session_renew": "Renew the session every (minutes)"
         },
         "data_description": {
-          "scan_interval": "The TP-Link integration polls every 5 seconds.",
-          "session_renew": "The cameras end the session about 10 minutes after login, and the next request fails once. The integration logs in again before that. 0 turns it off.",
-          "discovery": "Looks for the camera by MAC address at start and every 15 minutes, like the TP-Link integration. Turn off if the camera has a static IP."
+          "scan_interval": "How often the alarm and notification settings are read.",
+          "session_renew": "The cameras end the session about 10 minutes after login. pytapo then logs in again and repeats the request; the integration logs in again before that. 0 turns it off."
         }
       }
     }

@@ -1,109 +1,100 @@
-"""Kasa Camera Control: Tapo camera alarm control via python-kasa.
+"""Kasa Camera Control: Tapo camera alarm control via pytapo.
 
-The camera is connected the same way Home Assistant's TP-Link integration
-does it: a Home Assistant managed HTTP session, the connection
-parameters saved from the first successful connection, a MAC check so a
-changed DHCP lease never mixes up cameras, polling every 5 seconds and
-UDP discovery to follow a camera to a new IP address. Each poll reads
-only the alarm and notification config, in a single request.
+The camera is connected the same way the Tapo Control integration does it:
+pytapo with a camera account, or "admin" with the TP-Link cloud password.
+A MAC check makes sure a changed DHCP lease never mixes up cameras. Each
+poll reads only the alarm and notification config, in a single request.
 """
 
 from __future__ import annotations
 
 import logging
-from typing import Any
-
-from kasa.httpclient import get_cookie_jar
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
-from homeassistant.helpers import config_validation as cv, entity_registry as er
-from homeassistant.helpers.aiohttp_client import async_create_clientsession
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import format_mac
-from homeassistant.helpers.event import async_track_time_interval
-from homeassistant.helpers.typing import ConfigType
 
-from .api import AuthenticationError, KasaException, TapoAlarmApi, connect_device
+from .api import AuthenticationError, CameraError, TapoAlarmApi, basic_info, connect
 from .const import (
-    CONF_CONNECTION_PARAMETERS,
+    CONF_CLOUD_PASSWORD,
+    CONF_IS_KLAP,
     CONF_SCAN_INTERVAL,
     CONF_SESSION_RENEW,
     DEFAULT_SESSION_RENEW,
-    DISCOVERY_INTERVAL,
     DOMAIN,
     scan_interval,
 )
 from .coordinator import TapoAlarmCoordinator
-from .discovery import async_discover_and_update
 
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS = [Platform.BUTTON, Platform.SENSOR, Platform.SWITCH]
 
-CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
-
 type TapoAlarmConfigEntry = ConfigEntry[TapoAlarmCoordinator]
 
 
-async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Run discovery at start and every 15 minutes, like the TP-Link integration."""
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Move 1.x (python-kasa) entries to pytapo.
 
-    async def _async_discovery(*_: Any) -> None:
-        await async_discover_and_update(hass)
-
-    hass.async_create_background_task(
-        _async_discovery(), f"{DOMAIN} first discovery", eager_start=True
-    )
-    async_track_time_interval(
-        hass, _async_discovery, DISCOVERY_INTERVAL, cancel_on_shutdown=True
-    )
+    1.x logged in with the TP-Link cloud account. python-kasa logs in to
+    cameras as "admin" with the cloud password, which is what Tapo Control
+    does when a cloud password is given, so the camera keeps working
+    without asking for new credentials. A camera account can be set later
+    with "Reconfigure".
+    """
+    if entry.version == 1:
+        data = {
+            CONF_HOST: entry.data[CONF_HOST],
+            CONF_USERNAME: "",
+            CONF_PASSWORD: "",
+            CONF_CLOUD_PASSWORD: entry.data.get(CONF_PASSWORD, ""),
+            # The cameras 1.x supported all use the secure (non-KLAP) login.
+            CONF_IS_KLAP: False,
+        }
+        options = {k: v for k, v in entry.options.items() if k != "discovery"}
+        hass.config_entries.async_update_entry(
+            entry, data=data, options=options, version=2
+        )
+        _LOGGER.info("Migrated %s to pytapo", entry.title)
     return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: TapoAlarmConfigEntry) -> bool:
     """Set up the camera from a config entry."""
     host: str = entry.data[CONF_HOST]
-    # Same HTTP session setup as the TP-Link integration.
-    client = async_create_clientsession(
-        hass, verify_ssl=False, cookie_jar=get_cookie_jar()
-    )
     try:
-        device = await connect_device(
+        controller = await hass.async_add_executor_job(
+            connect,
+            hass,
             host,
-            entry.data[CONF_USERNAME],
-            entry.data[CONF_PASSWORD],
-            http_client=client,
-            connection_parameters=entry.data.get(CONF_CONNECTION_PARAMETERS),
+            entry.data.get(CONF_USERNAME, ""),
+            entry.data.get(CONF_PASSWORD, ""),
+            entry.data.get(CONF_CLOUD_PASSWORD, ""),
+            entry.data.get(CONF_IS_KLAP),
         )
     except AuthenticationError as err:
         raise ConfigEntryAuthFailed(str(err)) from err
-    except KasaException as err:
+    except CameraError as err:
         raise ConfigEntryNotReady(str(err)) from err
 
-    if (
-        entry.unique_id
-        and device.mac
-        and (found := format_mac(device.mac)) != entry.unique_id
-    ):
+    api = TapoAlarmApi(
+        hass,
+        controller,
+        host,
+        entry.options.get(CONF_SESSION_RENEW, DEFAULT_SESSION_RENEW),
+    )
+    mac = basic_info(controller).get("mac")
+    if entry.unique_id and mac and (found := format_mac(mac)) != entry.unique_id:
         # The DHCP lease probably moved and another device now has this IP.
-        # Do not mix up cameras: wait for discovery to find ours.
-        await device.disconnect()
+        # Do not mix up cameras.
+        await api.close()
         raise ConfigEntryNotReady(
             f"Expected {entry.unique_id} at {host} but found {found}"
         )
 
-    connection_parameters = device.config.connection_type.to_dict()
-    if entry.data.get(CONF_CONNECTION_PARAMETERS) != connection_parameters:
-        hass.config_entries.async_update_entry(
-            entry,
-            data={**entry.data, CONF_CONNECTION_PARAMETERS: connection_parameters},
-        )
-
-    api = TapoAlarmApi(
-        device, entry.options.get(CONF_SESSION_RENEW, DEFAULT_SESSION_RENEW)
-    )
     coordinator = TapoAlarmCoordinator(hass, entry, api)
     try:
         await coordinator.async_config_entry_first_refresh()
@@ -127,10 +118,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: TapoAlarmConfigEntry) -
 
 
 async def _async_options_updated(hass: HomeAssistant, entry: TapoAlarmConfigEntry) -> None:
-    """Apply changed options without reconnecting.
-
-    The discovery option is read on every discovery run.
-    """
+    """Apply changed options without reconnecting."""
     coordinator = entry.runtime_data
     coordinator.update_interval = scan_interval(entry.options.get(CONF_SCAN_INTERVAL))
     coordinator.api.session_renew_minutes = entry.options.get(

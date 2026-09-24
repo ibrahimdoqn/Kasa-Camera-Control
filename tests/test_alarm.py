@@ -1,38 +1,35 @@
-"""Tests for the Tapo camera alarm integration with a fake camera."""
+"""Tests for the Tapo camera alarm integration with a fake pytapo camera."""
 
 from datetime import timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+import threading
+from unittest.mock import patch
 
 import pytest
 from pytest_homeassistant_custom_component.common import (
     MockConfigEntry,
     async_fire_time_changed,
 )
+import requests
 
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
-from kasa.exceptions import DeviceError, SmartErrorCode
 
 from custom_components.tapo_kasa_alarm.const import DOMAIN
 
-DATA = {"host": "192.168.1.50", "username": "me@example.com", "password": "pw"}
-CONNECTION = {"device_family": "SMART.IPCAMERA", "encryption_type": "AES", "https": True}
-
-
-DISCOVER = "custom_components.tapo_kasa_alarm.discovery.discover_macs"
-
-
-@pytest.fixture(autouse=True)
-def no_real_discovery():
-    """Never send UDP broadcasts from tests."""
-    with patch(DISCOVER, AsyncMock(return_value={})) as discover:
-        yield discover
+DATA = {
+    "host": "192.168.1.50",
+    "username": "cam",
+    "password": "campw",
+    "cloud_password": "",
+    "is_klap": False,
+}
+CONNECT = "custom_components.tapo_kasa_alarm.connect"
 
 
 async def refresh_after_command(hass: HomeAssistant) -> None:
-    """Let the debounced refresh after a command run (0.35 s, like TP-Link)."""
+    """Let any pending refresh run."""
     async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=1))
     await hass.async_block_till_done()
 
@@ -43,8 +40,10 @@ async def _press(hass: HomeAssistant, service: str, entity_id: str) -> None:
     )
 
 
-class FakeProtocol:
-    def __init__(self):
+class FakeTapo:
+    """A pytapo Tapo controller talking to a fake camera."""
+
+    def __init__(self, mac="AA-BB-CC-DD-EE-FF"):
         # Same fields as a real C520WS getAlertConfig answer.
         self.alarm = {
             "alarm_duration": "0",
@@ -57,58 +56,100 @@ class FakeProtocol:
             "sound_alarm_enabled": "on",
         }
         self.push = {"notification_enabled": "on", "rich_notification_enabled": "off"}
-        self.requests = []
-        self.writes = []
+        self.basicInfo = {
+            "device_info": {
+                "basic_info": {
+                    "device_model": "C520WS",
+                    "device_alias": "Bahce",
+                    "sw_version": "1.0",
+                    "hw_version": "1.0",
+                    "mac": mac,
+                    "dev_id": "abc",
+                }
+            }
+        }
+        self.isKLAP = False
+        self.calls = []  # (method, params)
+        self.writes = []  # chn1_msg_alarm_info sent with setAlertConfig
+        self.closed = 0
+        self.fail = None  # exception raised by every call when set
+        self.alert_error = False  # answer getAlertConfig with an error
+        self.threads = set()
 
-    async def query(self, request):
-        self.requests.append(request)
-        resp = {}
-        for method, params in request.items():
-            if method == "getAlertConfig":
-                resp[method] = {"msg_alarm": {"chn1_msg_alarm_info": dict(self.alarm)}}
-            elif method == "setAlertConfig":
-                # The camera merges the sent fields into its config.
-                self.writes.append(params["msg_alarm"]["chn1_msg_alarm_info"])
-                self.alarm.update(params["msg_alarm"]["chn1_msg_alarm_info"])
-                if "alarm_mode" in self.writes[-1]:
-                    modes = self.alarm["alarm_mode"]
-                    self.alarm["sound_alarm_enabled"] = "on" if "sound" in modes else "off"
-                    self.alarm["light_alarm_enabled"] = "on" if "light" in modes else "off"
-                resp[method] = {}
-            elif method == "getMsgPushConfig":
-                resp[method] = {"msg_push": {"chn1_msg_push_info": dict(self.push)}}
-            elif method == "setMsgPushConfig":
-                self.push.update(params["msg_push"]["chn1_msg_push_info"])
-                resp[method] = {}
-            elif method == "rebootDevice":
-                self.rebooted = params
-                resp[method] = {}
-            else:
-                raise AssertionError(request)
-        return resp
+    def _answer(self, method, params):
+        if method == "getAlertConfig":
+            if self.alert_error:
+                return {"method": method, "error_code": -40106}
+            return {
+                "method": method,
+                "result": {"msg_alarm": {"chn1_msg_alarm_info": dict(self.alarm)}},
+                "error_code": 0,
+            }
+        if method == "getMsgPushConfig":
+            return {
+                "method": method,
+                "result": {"msg_push": {"chn1_msg_push_info": dict(self.push)}},
+                "error_code": 0,
+            }
+        raise AssertionError(method)
 
-    async def close(self):
-        pass
+    def executeFunction(self, method, params, retry=False):
+        self.threads.add(threading.current_thread().name)
+        self.calls.append((method, params))
+        if self.fail:
+            raise self.fail
+        if method == "multipleRequest":
+            return [self._answer(r["method"], r["params"]) for r in params["requests"]]
+        if method == "setAlertConfig":
+            sent = params["msg_alarm"]["chn1_msg_alarm_info"]
+            self.writes.append(sent)
+            # The camera merges the sent fields into its config.
+            self.alarm.update(sent)
+            if "alarm_mode" in sent:
+                modes = self.alarm["alarm_mode"]
+                self.alarm["sound_alarm_enabled"] = "on" if "sound" in modes else "off"
+                self.alarm["light_alarm_enabled"] = "on" if "light" in modes else "off"
+            return {}
+        raise AssertionError(method)
+
+    def setNotificationsEnabled(self, notificationsEnabled=None, richNotificationsEnabled=None):
+        self.calls.append(("setMsgPushConfig", notificationsEnabled))
+        if self.fail:
+            raise self.fail
+        self.push["notification_enabled"] = "on" if notificationsEnabled else "off"
+        return {}
+
+    def reboot(self):
+        self.calls.append(("rebootDevice", None))
+        return {}
+
+    def close(self):
+        self.closed += 1
+
+    def methods(self):
+        return [m for m, _ in self.calls]
 
 
-def fake_device():
-    dev = MagicMock()
-    dev.protocol = FakeProtocol()
-    dev.mac = "AA-BB-CC-DD-EE-FF"
-    dev.device_id = "abc"
-    dev.alias = "Bahce"
-    dev.model = "C520WS"
-    dev.hw_info = {"sw_ver": "1.0", "hw_ver": "1.0"}
-    dev.disconnect = AsyncMock()
-    dev.update = AsyncMock()
-    dev.host = "192.168.1.50"
-    dev.config.connection_type.to_dict.return_value = CONNECTION
-    return dev
+async def _setup(hass: HomeAssistant, cam: FakeTapo, options=None, data=None):
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        version=2,
+        data=data or DATA,
+        unique_id="aa:bb:cc:dd:ee:ff",
+        options=options or {},
+    )
+    entry.add_to_hass(hass)
+    with patch(CONNECT, return_value=cam) as connect:
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+    return entry, connect
 
 
 async def test_setup_and_toggle(hass: HomeAssistant) -> None:
-    dev = fake_device()
-    entry = MockConfigEntry(domain=DOMAIN, data=DATA, unique_id="aa:bb:cc:dd:ee:ff")
+    cam = FakeTapo()
+    entry = MockConfigEntry(
+        domain=DOMAIN, version=2, data=DATA, unique_id="aa:bb:cc:dd:ee:ff"
+    )
     entry.add_to_hass(hass)
     registry = er.async_get(hass)
     old_siren = registry.async_get_or_create(
@@ -117,10 +158,7 @@ async def test_setup_and_toggle(hass: HomeAssistant) -> None:
     old_rich = registry.async_get_or_create(
         "switch", DOMAIN, "aa:bb:cc:dd:ee:ff_rich_notifications", config_entry=entry
     )
-    with patch(
-        "custom_components.tapo_kasa_alarm.connect_device",
-        AsyncMock(return_value=dev),
-    ):
+    with patch(CONNECT, return_value=cam):
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
     assert entry.state is ConfigEntryState.LOADED
@@ -130,148 +168,238 @@ async def test_setup_and_toggle(hass: HomeAssistant) -> None:
     assert hass.states.get("switch.bahce_alarm").state == "off"
     assert hass.states.get("switch.bahce_alarm_sound").state == "on"
 
-    dev.protocol.requests.clear()
-    await hass.services.async_call(
-        "switch", "turn_on", {"entity_id": "switch.bahce_alarm"}, blocking=True
-    )
+    cam.calls.clear()
+    await _press(hass, "turn_on", "switch.bahce_alarm")
     # Like the Tapo app, only the changed field is sent.
-    assert dev.protocol.writes[-1] == {"enabled": "on"}
-    assert dev.protocol.alarm["enabled"] == "on"
-    assert dev.protocol.alarm["alarm_mode"] == ["sound", "light"]
+    assert cam.writes[-1] == {"enabled": "on"}
+    assert cam.alarm["alarm_mode"] == ["sound", "light"]
     # The camera is read right before the write. Like the Tapo app, the
     # written state is shown at once and the camera is not read again
     # right after the write.
     assert hass.states.get("switch.bahce_alarm").state == "on"
     await refresh_after_command(hass)
-    assert [next(iter(r)) for r in dev.protocol.requests] == [
-        "getAlertConfig",
-        "setAlertConfig",
-    ]
+    assert cam.methods() == ["multipleRequest", "setAlertConfig"]
 
     # Already on: the camera is read, nothing is written.
-    dev.protocol.requests.clear()
-    await hass.services.async_call(
-        "switch", "turn_on", {"entity_id": "switch.bahce_alarm"}, blocking=True
-    )
-    assert [next(iter(r)) for r in dev.protocol.requests] == ["getAlertConfig"]
-    await hass.services.async_call(
-        "switch", "turn_on", {"entity_id": "switch.bahce_alarm_sound"}, blocking=True
-    )
+    cam.calls.clear()
+    await _press(hass, "turn_on", "switch.bahce_alarm")
+    await _press(hass, "turn_on", "switch.bahce_alarm_sound")
     await hass.services.async_call(
         "switch", "turn_on", {"entity_id": "switch.bahce_notifications"}, blocking=True
     )
-    assert all("set" not in next(iter(r)) for r in dev.protocol.requests)
+    assert set(cam.methods()) == {"multipleRequest"}
     assert hass.states.get("switch.bahce_alarm").state == "on"
 
     # Changed in the Tapo app since the last poll: the fresh read sees it
     # and the write is still sent.
-    dev.protocol.alarm["enabled"] = "off"
-    await hass.services.async_call(
-        "switch", "turn_on", {"entity_id": "switch.bahce_alarm"}, blocking=True
-    )
-    assert dev.protocol.writes[-1] == {"enabled": "on"}
-    assert dev.protocol.alarm["enabled"] == "on"
+    cam.alarm["enabled"] = "off"
+    await _press(hass, "turn_on", "switch.bahce_alarm")
+    assert cam.writes[-1] == {"enabled": "on"}
 
-    await hass.services.async_call(
-        "switch", "turn_off", {"entity_id": "switch.bahce_alarm_light"}, blocking=True
-    )
-    assert dev.protocol.writes[-1] == {"alarm_mode": ["sound"]}
-    assert dev.protocol.alarm == {
-        "alarm_duration": "0",
-        "alarm_mode": ["sound"],
-        "alarm_type": "3",
-        "alarm_volume": "high",
-        "enabled": "on",
-        "light_alarm_enabled": "off",
-        "light_type": "1",
-        "sound_alarm_enabled": "on",
-    }
+    await _press(hass, "turn_off", "switch.bahce_alarm_light")
+    assert cam.writes[-1] == {"alarm_mode": ["sound"]}
+    assert cam.alarm["alarm_volume"] == "high"
+    assert cam.alarm["light_type"] == "1"
     assert hass.states.get("switch.bahce_alarm_light").state == "off"
-    assert entry.runtime_data.data["alarm"]["light_alarm_enabled"] == "off"
     assert hass.states.get("switch.bahce_alarm_sound").state == "on"
 
     assert hass.states.get("switch.bahce_notifications").state == "on"
-    assert hass.states.get("switch.bahce_rich_notifications") is None
     await hass.services.async_call(
         "switch", "turn_off", {"entity_id": "switch.bahce_notifications"}, blocking=True
     )
-    assert dev.protocol.push["notification_enabled"] == "off"
+    assert cam.push["notification_enabled"] == "off"
     assert hass.states.get("switch.bahce_notifications").state == "off"
 
-    # Every 5 seconds, one request with only the alarm and notification config.
-    dev.update.reset_mock()
-    dev.protocol.requests.clear()
+    # Each poll is one request with only the alarm and notification config.
+    cam.calls.clear()
     await entry.runtime_data.async_refresh()
-    dev.update.assert_not_awaited()
-    assert dev.protocol.requests == [
-        {
-            "getAlertConfig": {
-                "msg_alarm": {"name": ["chn1_msg_alarm_info"], "table": ["usr_def_audio"]}
+    assert cam.calls == [
+        (
+            "multipleRequest",
+            {
+                "requests": [
+                    {
+                        "method": "getAlertConfig",
+                        "params": {
+                            "msg_alarm": {
+                                "name": ["chn1_msg_alarm_info"],
+                                "table": ["usr_def_audio"],
+                            }
+                        },
+                    },
+                    {
+                        "method": "getMsgPushConfig",
+                        "params": {"msg_push": {"name": ["chn1_msg_push_info"]}},
+                    },
+                ]
             },
-            "getMsgPushConfig": {"msg_push": {"name": ["chn1_msg_push_info"]}},
-        }
+        )
     ]
     assert entry.runtime_data.update_interval == timedelta(seconds=5)
+    # pytapo is blocking: it never runs in the event loop thread.
+    assert "MainThread" not in cam.threads
 
     await hass.services.async_call(
         "button", "press", {"entity_id": "button.bahce_reboot"}, blocking=True
     )
-    assert dev.protocol.rebooted == {"system": {"reboot": "null"}}
+    assert cam.methods()[-1] == "rebootDevice"
 
     assert await hass.config_entries.async_unload(entry.entry_id)
-    dev.disconnect.assert_awaited()
+    assert cam.closed >= 1
+
+
+def test_login_like_tapo_control() -> None:
+    """Camera account, or "admin" + cloud password, with Tapo Control's settings."""
+    from custom_components.tapo_kasa_alarm.api import connect
+
+    with patch("custom_components.tapo_kasa_alarm.api.Tapo") as tapo:
+        connect(None, "1.2.3.4", "cam", "campw")
+        args, kwargs = tapo.call_args
+        assert args == ("1.2.3.4", "cam", "campw", "")
+        assert kwargs["reuseSession"] is False
+        assert kwargs["retryStok"] is False
+
+        connect(None, "1.2.3.4", "cam", "campw", "cloudpw", False)
+        args, kwargs = tapo.call_args
+        assert args == ("1.2.3.4", "admin", "cloudpw", "cloudpw")
+        assert kwargs["isKLAP"] is False
+
+
+def test_login_errors() -> None:
+    from custom_components.tapo_kasa_alarm.api import (
+        AuthenticationError,
+        CameraError,
+        connect,
+    )
+
+    with patch(
+        "custom_components.tapo_kasa_alarm.api.Tapo",
+        side_effect=Exception("Invalid authentication data"),
+    ), pytest.raises(AuthenticationError):
+        connect(None, "1.2.3.4", "cam", "bad")
+    with patch(
+        "custom_components.tapo_kasa_alarm.api.Tapo",
+        side_effect=requests.ConnectionError("refused"),
+    ), pytest.raises(CameraError) as err:
+        connect(None, "1.2.3.4", "cam", "campw")
+    assert not isinstance(err.value, AuthenticationError)
 
 
 async def test_config_flow(hass: HomeAssistant) -> None:
+    user_input = {"host": "192.168.1.50", "username": "cam", "password": "campw"}
     with patch(
-        "custom_components.tapo_kasa_alarm.config_flow.connect_device",
-        AsyncMock(return_value=fake_device()),
+        "custom_components.tapo_kasa_alarm.config_flow.connect", return_value=FakeTapo()
     ), patch("custom_components.tapo_kasa_alarm.async_setup_entry", return_value=True):
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": "user"}
         )
         result = await hass.config_entries.flow.async_configure(
-            result["flow_id"], DATA
+            result["flow_id"], user_input
         )
     assert result["type"] == "create_entry"
     assert result["title"] == "Bahce"
     assert result["result"].unique_id == "aa:bb:cc:dd:ee:ff"
-    assert result["result"].data["connection_parameters"] == CONNECTION
+    assert result["result"].version == 2
+    assert result["result"].data == {**user_input, "cloud_password": "", "is_klap": False}
+
+
+async def test_config_flow_errors(hass: HomeAssistant) -> None:
+    from custom_components.tapo_kasa_alarm.api import AuthenticationError
+
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"host": "192.168.1.50"}
+    )
+    assert result["errors"] == {"base": "missing_credentials"}
+
+    with patch(
+        "custom_components.tapo_kasa_alarm.config_flow.connect",
+        side_effect=AuthenticationError("bad"),
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"host": "192.168.1.50", "cloud_password": "bad"}
+        )
+    assert result["errors"] == {"base": "invalid_auth"}
+
+
+async def test_migrate_from_kasa(hass: HomeAssistant) -> None:
+    """1.x entries keep working: the cloud password logs in as admin."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        version=1,
+        data={
+            "host": "192.168.1.50",
+            "username": "me@example.com",
+            "password": "cloudpw",
+            "connection_parameters": {"device_family": "SMART.IPCAMERA"},
+        },
+        options={"scan_interval": 10, "session_renew": 8, "discovery": False},
+        unique_id="aa:bb:cc:dd:ee:ff",
+    )
+    entry.add_to_hass(hass)
+    with patch(CONNECT, return_value=FakeTapo()) as connect:
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+    assert entry.state is ConfigEntryState.LOADED
+    assert entry.version == 2
+    assert entry.data == {
+        "host": "192.168.1.50",
+        "username": "",
+        "password": "",
+        "cloud_password": "cloudpw",
+        "is_klap": False,
+    }
+    assert entry.options == {"scan_interval": 10, "session_renew": 8}
+    assert connect.call_args.args[1:] == ("192.168.1.50", "", "", "cloudpw", False)
+    # Entity IDs stay the same.
+    assert hass.states.get("switch.bahce_alarm") is not None
+
+
+async def test_reconfigure_to_camera_account(hass: HomeAssistant) -> None:
+    entry, _ = await _setup(
+        hass, FakeTapo(), data={**DATA, "username": "", "password": "", "cloud_password": "c"}
+    )
+    result = await entry.start_reconfigure_flow(hass)
+    with patch(
+        "custom_components.tapo_kasa_alarm.config_flow.connect", return_value=FakeTapo()
+    ), patch(CONNECT, return_value=FakeTapo()):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {"host": "192.168.1.51", "username": "cam", "password": "campw"},
+        )
+        await hass.async_block_till_done()
+    assert result["reason"] == "reconfigure_successful"
+    assert entry.data["host"] == "192.168.1.51"
+    assert entry.data["username"] == "cam"
+    assert entry.data["cloud_password"] == ""
 
 
 async def test_only_the_alert_config_calls_are_used(hass: HomeAssistant) -> None:
     """Old alarm calls (getLastAlarmInfo, raw set, *AlarmConfig) are never sent."""
-    dev = fake_device()
-    entry, _ = await _setup(hass, dev)
+    cam = FakeTapo()
+    await _setup(hass, cam)
     await _press(hass, "turn_on", "switch.bahce_alarm")
-    await refresh_after_command(hass)
     await _press(hass, "turn_off", "switch.bahce_alarm_sound")
     await refresh_after_command(hass)
-    methods = {m for request in dev.protocol.requests for m in request}
-    assert methods <= {"getAlertConfig", "setAlertConfig", "getMsgPushConfig"}
-    # The whole config is kept, only the changed fields differ.
-    assert dev.protocol.alarm["alarm_volume"] == "high"
-    assert dev.protocol.alarm["light_type"] == "1"
-    assert dev.protocol.alarm["enabled"] == "on"
-    assert dev.protocol.alarm["alarm_mode"] == ["light"]
-    assert dev.protocol.alarm["sound_alarm_enabled"] == "off"
+    methods = set(cam.methods())
+    for method, params in cam.calls:
+        if method == "multipleRequest":
+            methods.update(r["method"] for r in params["requests"])
+    assert methods <= {
+        "multipleRequest",
+        "getAlertConfig",
+        "setAlertConfig",
+        "getMsgPushConfig",
+    }
+    assert cam.alarm["enabled"] == "on"
+    assert cam.alarm["alarm_mode"] == ["light"]
     assert hass.states.get("switch.bahce_alarm_sound").state == "off"
 
 
 async def test_camera_without_alert_config_fails_clearly(hass: HomeAssistant) -> None:
-    dev = fake_device()
-    real_query = dev.protocol.query
-
-    async def old_firmware(request):
-        if "getAlertConfig" in request:
-            return {
-                "getAlertConfig": SmartErrorCode.INVALID_ARGUMENTS,
-                "getMsgPushConfig": {"msg_push": {"chn1_msg_push_info": {}}},
-            }
-        return await real_query(request)
-
-    dev.protocol.query = old_firmware
-    entry, _ = await _setup(hass, dev)
+    cam = FakeTapo()
+    cam.alert_error = True
+    entry, _ = await _setup(hass, cam)
     assert entry.state is ConfigEntryState.SETUP_RETRY
     assert "getAlertConfig" in (entry.reason or "")
 
@@ -289,216 +417,107 @@ def test_alarm_modes_follow_enabled_flags() -> None:
     assert alarm_modes({"alarm_mode": ["siren"], "sound_alarm_enabled": "off"}) == []
 
 
-async def test_expired_session_recovers_like_tplink() -> None:
-    """Like python-kasa's device.update(): a failed poll is asked again one by one."""
-    from kasa import KasaException
+async def test_authentication_error_starts_reauth(hass: HomeAssistant) -> None:
+    from custom_components.tapo_kasa_alarm.api import AuthenticationError
 
-    from custom_components.tapo_kasa_alarm.api import TapoAlarmApi
-
-    dev = fake_device()
-    real_query = dev.protocol.query
-    calls = []
-
-    async def expired_once(request):
-        calls.append(list(request))
-        if len(calls) == 1:
-            raise KasaException(
-                "responded with an unexpected status code 401 to passthrough"
-            )
-        return await real_query(request)
-
-    dev.protocol.query = expired_once
-    state = await TapoAlarmApi(dev).get_state()
-    assert state["alarm"]["enabled"] == "off"
-    assert state["push"]["notification_enabled"] == "on"
-    assert calls == [
-        ["getAlertConfig", "getMsgPushConfig"],
-        ["getAlertConfig"],
-        ["getMsgPushConfig"],
-    ]
-
-
-async def test_unreachable_camera_still_fails() -> None:
-    """If the camera does not answer at all the poll fails at once (unavailable)."""
-    from kasa.exceptions import TimeoutError as KasaTimeoutError, _ConnectionError
-
-    from custom_components.tapo_kasa_alarm.api import TapoAlarmApi
-
-    for error in (_ConnectionError("Connect call failed"), KasaTimeoutError("timeout")):
-        dev = fake_device()
-        calls = {"n": 0}
-
-        async def unreachable(request, error=error):
-            calls["n"] += 1
-            raise error
-
-        dev.protocol.query = unreachable
-        api = TapoAlarmApi(dev)
-        with pytest.raises(type(error)):
-            await api.get_state()
-        # No one-by-one retries on top of python-kasa's own retries.
-        assert calls["n"] == 1
-
-
-async def test_authentication_error_is_not_recovered() -> None:
-    from kasa import AuthenticationError
-
-    from custom_components.tapo_kasa_alarm.api import TapoAlarmApi
-
-    dev = fake_device()
-    calls = {"n": 0}
-
-    async def denied(request):
-        calls["n"] += 1
-        raise AuthenticationError("bad password")
-
-    dev.protocol.query = denied
-    with pytest.raises(AuthenticationError):
-        await TapoAlarmApi(dev).get_state()
-    assert calls["n"] == 1
-
-
-async def _setup(hass: HomeAssistant, dev, options=None):
     entry = MockConfigEntry(
-        domain=DOMAIN, data=DATA, unique_id="aa:bb:cc:dd:ee:ff", options=options or {}
+        domain=DOMAIN, version=2, data=DATA, unique_id="aa:bb:cc:dd:ee:ff"
     )
     entry.add_to_hass(hass)
-    connect = AsyncMock(return_value=dev)
-    with patch("custom_components.tapo_kasa_alarm.connect_device", connect):
+    with patch(CONNECT, side_effect=AuthenticationError("bad")):
         await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
-    return entry, connect
-
-
-async def test_connects_like_tplink(hass: HomeAssistant) -> None:
-    """HA managed HTTP session, connection parameters are saved."""
-    entry, connect = await _setup(hass, fake_device())
-    assert entry.state is ConfigEntryState.LOADED
-    assert entry.data["connection_parameters"] == CONNECTION
-    kwargs = connect.call_args.kwargs
-    assert kwargs["http_client"] is not None
-    assert kwargs["connection_parameters"] is None
+    assert entry.state is ConfigEntryState.SETUP_ERROR
+    flows = hass.config_entries.flow.async_progress()
+    assert [flow["context"]["source"] for flow in flows] == ["reauth"]
 
 
 async def test_wrong_device_at_ip(hass: HomeAssistant) -> None:
     """Another device at the stored IP is never used."""
-    other = fake_device()
-    other.mac = "11-22-33-44-55-66"
+    other = FakeTapo(mac="11-22-33-44-55-66")
     entry, _ = await _setup(hass, other)
     assert entry.state is ConfigEntryState.SETUP_RETRY
-    other.disconnect.assert_awaited()
+    assert other.closed == 1
 
 
 async def test_no_mac_does_not_block_setup(hass: HomeAssistant) -> None:
     """A camera that reports no MAC is not mistaken for another device."""
-    dev = fake_device()
-    dev.mac = ""
-    entry, _ = await _setup(hass, dev)
+    entry, _ = await _setup(hass, FakeTapo(mac=""))
     assert entry.state is ConfigEntryState.LOADED
-
-
-async def test_discovery_moves_camera(hass: HomeAssistant, no_real_discovery) -> None:
-    """Discovery at start / every 15 min follows the camera to a new IP."""
-    from custom_components.tapo_kasa_alarm.discovery import async_discover_and_update
-
-    entry, _ = await _setup(hass, fake_device())
-    no_real_discovery.return_value = {"AA:BB:CC:DD:EE:FF": "192.168.1.77"}
-    with patch(
-        "custom_components.tapo_kasa_alarm.connect_device",
-        AsyncMock(return_value=fake_device()),
-    ):
-        await async_discover_and_update(hass)
-        await hass.async_block_till_done()
-    assert entry.data["host"] == "192.168.1.77"
-    assert entry.state is ConfigEntryState.LOADED
-
-
-async def test_discovery_can_be_turned_off(
-    hass: HomeAssistant, no_real_discovery
-) -> None:
-    """With the option off (static IP) no broadcast is sent at all."""
-    from custom_components.tapo_kasa_alarm.discovery import async_discover_and_update
-
-    entry, _ = await _setup(hass, fake_device(), options={"discovery": False})
-    no_real_discovery.reset_mock()
-    no_real_discovery.return_value = {"AA:BB:CC:DD:EE:FF": "192.168.1.77"}
-    await async_discover_and_update(hass)
-    no_real_discovery.assert_not_awaited()
-    assert entry.data["host"] == DATA["host"]
 
 
 async def test_options_flow(hass: HomeAssistant) -> None:
-    entry, _ = await _setup(hass, fake_device())
+    entry, _ = await _setup(hass, FakeTapo())
     result = await hass.config_entries.options.async_init(entry.entry_id)
     result = await hass.config_entries.options.async_configure(
-        result["flow_id"], {"scan_interval": 30, "session_renew": 5, "discovery": False}
+        result["flow_id"], {"scan_interval": 30, "session_renew": 5}
     )
     await hass.async_block_till_done()
-    assert entry.options == {"scan_interval": 30, "session_renew": 5, "discovery": False}
+    assert entry.options == {"scan_interval": 30, "session_renew": 5}
     assert entry.runtime_data.update_interval == timedelta(seconds=30)
     assert entry.runtime_data.api.session_renew_minutes == 5
     assert isinstance(entry.options["session_renew"], int)
     assert entry.state is ConfigEntryState.LOADED
 
 
-async def test_session_renewed_before_camera_ends_it() -> None:
-    """The session is dropped every N minutes so python-kasa logs in again."""
+async def test_session_renewed_before_camera_ends_it(hass: HomeAssistant) -> None:
+    """The session is dropped every N minutes so pytapo logs in again."""
     from custom_components.tapo_kasa_alarm.api import TapoAlarmApi
 
-    dev = fake_device()
-    dev.protocol.close = AsyncMock()
+    cam = FakeTapo()
     clock = {"now": 1000.0}
     with patch(
         "custom_components.tapo_kasa_alarm.api.time.monotonic",
         side_effect=lambda: clock["now"],
     ):
-        api = TapoAlarmApi(dev, session_renew_minutes=8)
+        api = TapoAlarmApi(hass, cam, "1.2.3.4", session_renew_minutes=8)
         clock["now"] += 7 * 60
         await api.get_state()
-        dev.protocol.close.assert_not_awaited()
+        assert cam.closed == 0
 
         clock["now"] += 60  # 8 minutes after login
         await api.get_state()
-        dev.protocol.close.assert_awaited_once()
+        assert cam.closed == 1
 
         clock["now"] += 60  # new session is only 1 minute old
         await api.get_state()
-        dev.protocol.close.assert_awaited_once()
+        assert cam.closed == 1
 
         api.session_renew_minutes = 0  # turned off
         clock["now"] += 60 * 60
         await api.get_state()
-        dev.protocol.close.assert_awaited_once()
+        assert cam.closed == 1
 
 
 async def test_default_session_renew(hass: HomeAssistant) -> None:
-    entry, _ = await _setup(hass, fake_device())
+    entry, _ = await _setup(hass, FakeTapo())
     assert entry.runtime_data.api.session_renew_minutes == 8
 
 
 # --- Connection diagnostics ------------------------------------------------
 
 
-async def test_connection_diagnostic_sensors(hass: HomeAssistant) -> None:
-    from kasa.exceptions import _ConnectionError
+def _refused() -> requests.ConnectionError:
+    """What pytapo raises while the camera restarts its services."""
+    try:
+        try:
+            raise ConnectionRefusedError(111, "Connection refused")
+        except ConnectionRefusedError as refused:
+            raise OSError("Failed to establish a new connection") from refused
+    except OSError as err:
+        return requests.ConnectionError(err)
 
-    dev = fake_device()
-    entry, _ = await _setup(hass, dev)
+
+async def test_connection_diagnostic_sensors(hass: HomeAssistant) -> None:
+    cam = FakeTapo()
+    entry, _ = await _setup(hass, cam)
     coordinator = entry.runtime_data
 
     since = hass.states.get("sensor.bahce_connected_since")
     assert since.state not in ("unknown", "unavailable")
-    count = hass.states.get("sensor.bahce_disconnects")
-    assert count.state == "0"
+    assert hass.states.get("sensor.bahce_disconnects").state == "0"
 
-    real_query = dev.protocol.query
-
-    async def refused(request):
-        raise _ConnectionError(
-            "Device connection error", ConnectionRefusedError(111, "refused")
-        )
-
-    dev.protocol.query = refused
+    cam.fail = _refused()
     await coordinator.async_refresh()
     await coordinator.async_refresh()  # same outage, counted once
     await hass.async_block_till_done()
@@ -509,7 +528,7 @@ async def test_connection_diagnostic_sensors(hass: HomeAssistant) -> None:
     assert count.attributes["down_since"] is not None
     assert hass.states.get("sensor.bahce_connected_since").state == "unknown"
 
-    dev.protocol.query = real_query
+    cam.fail = None
     await coordinator.async_refresh()
     await hass.async_block_till_done()
     assert hass.states.get("switch.bahce_alarm").state == "off"
@@ -521,21 +540,27 @@ async def test_connection_diagnostic_sensors(hass: HomeAssistant) -> None:
 
 
 def test_disconnect_reasons() -> None:
-    from kasa import AuthenticationError, KasaException
-    from kasa.exceptions import TimeoutError as KasaTimeoutError, _ConnectionError
+    from custom_components.tapo_kasa_alarm.api import (
+        AuthenticationError,
+        CameraError,
+        _wrap,
+        disconnect_reason,
+    )
 
-    from custom_components.tapo_kasa_alarm.api import disconnect_reason
+    def wrapped(err: Exception) -> CameraError:
+        try:
+            raise _wrap(err) from err
+        except CameraError as camera_error:
+            return camera_error
 
+    assert disconnect_reason(wrapped(_refused())) == "reboot"
     assert (
-        disconnect_reason(_ConnectionError("x", ConnectionRefusedError(111, "r")))
-        == "reboot"
+        disconnect_reason(wrapped(requests.ConnectionError(OSError(113, "no route"))))
+        == "unreachable"
     )
-    assert disconnect_reason(_ConnectionError("x", OSError(113, "no route"))) == (
-        "unreachable"
-    )
-    assert disconnect_reason(KasaTimeoutError("timeout")) == "timeout"
+    assert disconnect_reason(wrapped(requests.ReadTimeout("timeout"))) == "timeout"
     assert disconnect_reason(AuthenticationError("bad")) == "auth"
-    assert disconnect_reason(KasaException("401")) == "error"
+    assert disconnect_reason(wrapped(Exception("Error: -40106"))) == "error"
 
 
 async def test_disconnect_count_starts_from_zero_after_restart(
@@ -562,7 +587,7 @@ async def test_disconnect_count_starts_from_zero_after_restart(
             )
         ],
     )
-    await _setup(hass, fake_device())
+    await _setup(hass, FakeTapo())
     count = hass.states.get("sensor.bahce_disconnects")
     assert count.state == "0"
     assert count.attributes["last_disconnect_reason"] is None

@@ -5,18 +5,15 @@
     "@ibrahimdoqn"
   ],
   "config_flow": true,
-  "dependencies": [
-    "network"
-  ],
-  "documentation": "https://github.com/ibrahimdoqn/TapoKamera",
+  "documentation": "https://github.com/ibrahimdoqn/Kasa-Camera-Control",
   "integration_type": "device",
   "iot_class": "local_polling",
-  "issue_tracker": "https://github.com/ibrahimdoqn/TapoKamera/issues",
+  "issue_tracker": "https://github.com/ibrahimdoqn/Kasa-Camera-Control/issues",
   "loggers": [
-    "kasa"
+    "pytapo"
   ],
   "requirements": [
-    "python-kasa>=0.10.0"
+    "pytapo==3.4.19"
   ],
-  "version": "1.6.8"
+  "version": "2.0.0"
 }

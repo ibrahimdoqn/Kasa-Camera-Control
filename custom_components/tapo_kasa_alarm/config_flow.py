@@ -6,7 +6,6 @@ from collections.abc import Mapping
 import logging
 from typing import Any
 
-from kasa.httpclient import get_cookie_jar
 import voluptuous as vol
 
 from homeassistant.config_entries import (
@@ -17,21 +16,22 @@ from homeassistant.config_entries import (
 )
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.device_registry import format_mac
 from homeassistant.helpers.selector import (
     NumberSelector,
     NumberSelectorConfig,
     NumberSelectorMode,
+    TextSelector,
+    TextSelectorConfig,
+    TextSelectorType,
 )
 
-from .api import AuthenticationError, KasaException, connect_device
+from .api import AuthenticationError, CameraError, basic_info, connect
 from .const import (
-    CONF_CONNECTION_PARAMETERS,
-    CONF_DISCOVERY,
+    CONF_CLOUD_PASSWORD,
+    CONF_IS_KLAP,
     CONF_SCAN_INTERVAL,
     CONF_SESSION_RENEW,
-    DEFAULT_DISCOVERY,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_SESSION_RENEW,
     DOMAIN,
@@ -41,77 +41,90 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
+_PASSWORD = TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD))
 
-async def _validate(
-    hass: HomeAssistant, host: str, username: str, password: str
-) -> tuple[str, str, dict[str, Any]]:
-    """Connect once and return (unique_id, title, connection parameters)."""
-    device = await connect_device(
+CREDENTIALS_SCHEMA = {
+    vol.Optional(CONF_USERNAME, default=""): str,
+    vol.Optional(CONF_PASSWORD, default=""): _PASSWORD,
+    vol.Optional(CONF_CLOUD_PASSWORD, default=""): _PASSWORD,
+}
+
+
+class MissingCredentials(Exception):
+    """Neither a camera account nor a cloud password was given."""
+
+
+def _validate(hass: HomeAssistant, host: str, data: dict[str, Any]) -> dict[str, Any]:
+    """Log in once (blocking) and return the camera's details."""
+    if not data.get(CONF_CLOUD_PASSWORD) and not (
+        data.get(CONF_USERNAME) and data.get(CONF_PASSWORD)
+    ):
+        raise MissingCredentials
+    controller = connect(
+        hass,
         host,
-        username,
-        password,
-        http_client=async_create_clientsession(
-            hass, verify_ssl=False, cookie_jar=get_cookie_jar()
-        ),
+        data.get(CONF_USERNAME, ""),
+        data.get(CONF_PASSWORD, ""),
+        data.get(CONF_CLOUD_PASSWORD, ""),
     )
     try:
-        uid = format_mac(device.mac) if device.mac else device.device_id
-        return (
-            str(uid),
-            device.alias or device.model or host,
-            device.config.connection_type.to_dict(),
-        )
+        info = basic_info(controller)
+        mac = info.get("mac")
+        return {
+            "unique_id": format_mac(mac) if mac else info.get("dev_id") or host,
+            "title": info.get("device_alias") or info.get("device_model") or host,
+            CONF_IS_KLAP: bool(controller.isKLAP),
+        }
     finally:
-        await device.disconnect()
+        try:
+            controller.close()
+        except Exception:  # noqa: BLE001 - only a login test
+            pass
 
 
 class TapoAlarmConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow."""
 
-    VERSION = 1
+    VERSION = 2
+
+    async def _async_validate(
+        self, host: str, data: dict[str, Any], errors: dict[str, str]
+    ) -> dict[str, Any] | None:
+        try:
+            return await self.hass.async_add_executor_job(
+                _validate, self.hass, host, data
+            )
+        except MissingCredentials:
+            errors["base"] = "missing_credentials"
+        except AuthenticationError:
+            errors["base"] = "invalid_auth"
+        except CameraError:
+            errors["base"] = "cannot_connect"
+        except Exception:
+            _LOGGER.exception("Unexpected error")
+            errors["base"] = "unknown"
+        return None
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         errors: dict[str, str] = {}
         if user_input is not None:
-            try:
-                uid, title, connection_parameters = await _validate(
-                    self.hass,
-                    user_input[CONF_HOST],
-                    user_input[CONF_USERNAME],
-                    user_input[CONF_PASSWORD],
-                )
-            except AuthenticationError:
-                errors["base"] = "invalid_auth"
-            except KasaException:
-                errors["base"] = "cannot_connect"
-            except Exception:
-                _LOGGER.exception("Unexpected error")
-                errors["base"] = "unknown"
-            else:
-                await self.async_set_unique_id(uid)
+            found = await self._async_validate(user_input[CONF_HOST], user_input, errors)
+            if found is not None:
+                await self.async_set_unique_id(found["unique_id"])
                 self._abort_if_unique_id_configured(
                     updates={CONF_HOST: user_input[CONF_HOST]}
                 )
                 return self.async_create_entry(
-                    title=title,
-                    data={
-                        **user_input,
-                        CONF_CONNECTION_PARAMETERS: connection_parameters,
-                    },
+                    title=found["title"],
+                    data={**user_input, CONF_IS_KLAP: found[CONF_IS_KLAP]},
                 )
 
         return self.async_show_form(
             step_id="user",
             data_schema=self.add_suggested_values_to_schema(
-                vol.Schema(
-                    {
-                        vol.Required(CONF_HOST): str,
-                        vol.Required(CONF_USERNAME): str,
-                        vol.Required(CONF_PASSWORD): str,
-                    }
-                ),
+                vol.Schema({vol.Required(CONF_HOST): str, **CREDENTIALS_SCHEMA}),
                 user_input,
             ),
             errors=errors,
@@ -128,31 +141,46 @@ class TapoAlarmConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
         entry = self._get_reauth_entry()
         if user_input is not None:
-            try:
-                await _validate(
-                    self.hass,
-                    entry.data[CONF_HOST],
-                    user_input[CONF_USERNAME],
-                    user_input[CONF_PASSWORD],
-                )
-            except AuthenticationError:
-                errors["base"] = "invalid_auth"
-            except KasaException:
-                errors["base"] = "cannot_connect"
-            else:
+            found = await self._async_validate(entry.data[CONF_HOST], user_input, errors)
+            if found is not None:
                 return self.async_update_reload_and_abort(
-                    entry, data_updates=user_input
+                    entry,
+                    data_updates={**user_input, CONF_IS_KLAP: found[CONF_IS_KLAP]},
                 )
 
         return self.async_show_form(
             step_id="reauth_confirm",
-            data_schema=vol.Schema(
+            data_schema=self.add_suggested_values_to_schema(
+                vol.Schema(CREDENTIALS_SCHEMA),
+                {CONF_USERNAME: entry.data.get(CONF_USERNAME, "")},
+            ),
+            errors=errors,
+        )
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Change the IP address or the login (e.g. to a camera account)."""
+        errors: dict[str, str] = {}
+        entry = self._get_reconfigure_entry()
+        if user_input is not None:
+            found = await self._async_validate(user_input[CONF_HOST], user_input, errors)
+            if found is not None:
+                await self.async_set_unique_id(found["unique_id"])
+                self._abort_if_unique_id_mismatch(reason="wrong_camera")
+                return self.async_update_reload_and_abort(
+                    entry,
+                    data_updates={**user_input, CONF_IS_KLAP: found[CONF_IS_KLAP]},
+                )
+
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=self.add_suggested_values_to_schema(
+                vol.Schema({vol.Required(CONF_HOST): str, **CREDENTIALS_SCHEMA}),
                 {
-                    vol.Required(
-                        CONF_USERNAME, default=entry.data.get(CONF_USERNAME, "")
-                    ): str,
-                    vol.Required(CONF_PASSWORD): str,
-                }
+                    CONF_HOST: entry.data[CONF_HOST],
+                    CONF_USERNAME: entry.data.get(CONF_USERNAME, ""),
+                },
             ),
             errors=errors,
         )
@@ -164,7 +192,7 @@ class TapoAlarmConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class TapoAlarmOptionsFlow(OptionsFlow):
-    """Polling interval, session renewal and IP discovery options."""
+    """Polling interval and session renewal options."""
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -200,12 +228,6 @@ class TapoAlarmOptionsFlow(OptionsFlow):
                         ),
                         vol.Coerce(int),
                     ),
-                    vol.Required(
-                        CONF_DISCOVERY,
-                        default=self.config_entry.options.get(
-                            CONF_DISCOVERY, DEFAULT_DISCOVERY
-                        ),
-                    ): bool,
                 }
             ),
         )

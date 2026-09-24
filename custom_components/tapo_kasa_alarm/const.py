@@ -6,31 +6,23 @@ from datetime import timedelta
 
 DOMAIN = "tapo_kasa_alarm"
 
+# Login like Tapo Control: the camera account, or "admin" with the TP-Link
+# cloud password when one is given.
+CONF_CLOUD_PASSWORD = "cloud_password"
+CONF_IS_KLAP = "is_klap"
+
 CONF_SCAN_INTERVAL = "scan_interval"
-# Same polling interval as the TP-Link integration.
 DEFAULT_SCAN_INTERVAL = 5
 MIN_SCAN_INTERVAL = 5
 
-# Follow cameras to a new IP by MAC with UDP discovery (on by default,
-# like the TP-Link integration; can be turned off for static IPs).
-CONF_DISCOVERY = "discovery"
-DEFAULT_DISCOVERY = True
-DISCOVERY_INTERVAL = timedelta(minutes=15)
-
-# The cameras end the session about 10 minutes after login and answer the
-# next request with HTTP 401. Log in again before that (0 turns it off).
+# The cameras end the session about 10 minutes after login. Log in again
+# before that (0 turns it off).
 CONF_SESSION_RENEW = "session_renew"
 DEFAULT_SESSION_RENEW = 8  # minutes
 MAX_SESSION_RENEW = 60
 
-# Same delay as the TP-Link integration before refreshing after a command.
+# Delay before a requested refresh.
 REQUEST_REFRESH_DELAY = 0.35
-
-# Same timeouts as the TP-Link integration.
-DEFAULT_TIMEOUT = 5
-DISCOVERY_TIMEOUT = 5
-
-CONF_CONNECTION_PARAMETERS = "connection_parameters"
 
 ALARM_SECTION = "chn1_msg_alarm_info"
 PUSH_SECTION = "chn1_msg_push_info"

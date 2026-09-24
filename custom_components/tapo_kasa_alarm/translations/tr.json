@@ -3,29 +3,54 @@
     "step": {
       "user": {
         "title": "Tapo kamera",
-        "description": "Tapo uygulamasında ve Home Assistant TP-Link entegrasyonunda kullandığınız TP-Link bulut hesabını (e-posta / şifre) girin.",
+        "description": "Tapo Control gibi giriş yapılır: ya kamera hesabı (Tapo uygulaması → kamera → Ayarlar → Gelişmiş ayarlar → Kamera hesabı) ya da bunu boş bırakıp TP-Link bulut şifresini girin (kameraya o zaman \"admin\" olarak girilir).",
         "data": {
           "host": "Host / IP",
-          "username": "TP-Link hesabı e-posta",
-          "password": "Şifre"
+          "username": "Kamera hesabı kullanıcı adı",
+          "password": "Kamera hesabı şifresi",
+          "cloud_password": "TP-Link bulut şifresi (isteğe bağlı)"
+        },
+        "data_description": {
+          "cloud_password": "Girilirse Tapo Control'deki gibi kamera hesabı yerine bu kullanılır."
         }
       },
       "reauth_confirm": {
         "title": "Yeniden kimlik doğrulama",
+        "description": "Tapo Control gibi giriş yapılır: ya kamera hesabı (Tapo uygulaması → kamera → Ayarlar → Gelişmiş ayarlar → Kamera hesabı) ya da bunu boş bırakıp TP-Link bulut şifresini girin (kameraya o zaman \"admin\" olarak girilir).",
         "data": {
-          "username": "TP-Link hesabı e-posta",
-          "password": "Şifre"
+          "username": "Kamera hesabı kullanıcı adı",
+          "password": "Kamera hesabı şifresi",
+          "cloud_password": "TP-Link bulut şifresi (isteğe bağlı)"
+        },
+        "data_description": {
+          "cloud_password": "Girilirse Tapo Control'deki gibi kamera hesabı yerine bu kullanılır."
+        }
+      },
+      "reconfigure": {
+        "title": "Yeniden yapılandır",
+        "description": "Tapo Control gibi giriş yapılır: ya kamera hesabı (Tapo uygulaması → kamera → Ayarlar → Gelişmiş ayarlar → Kamera hesabı) ya da bunu boş bırakıp TP-Link bulut şifresini girin (kameraya o zaman \"admin\" olarak girilir).",
+        "data": {
+          "host": "Host / IP",
+          "username": "Kamera hesabı kullanıcı adı",
+          "password": "Kamera hesabı şifresi",
+          "cloud_password": "TP-Link bulut şifresi (isteğe bağlı)"
+        },
+        "data_description": {
+          "cloud_password": "Girilirse Tapo Control'deki gibi kamera hesabı yerine bu kullanılır."
         }
       }
     },
     "error": {
       "invalid_auth": "Geçersiz kullanıcı adı veya şifre",
       "cannot_connect": "Kameraya bağlanılamadı",
-      "unknown": "Beklenmeyen hata"
+      "unknown": "Beklenmeyen hata",
+      "missing_credentials": "Kamera hesabı kullanıcı adı ve şifresini ya da TP-Link bulut şifresini girin"
     },
     "abort": {
       "already_configured": "Kamera zaten ekli",
-      "reauth_successful": "Kimlik doğrulama başarılı"
+      "reauth_successful": "Kimlik doğrulama başarılı",
+      "wrong_camera": "Bu IP adresinde başka bir kamera cevap veriyor",
+      "reconfigure_successful": "Yeniden yapılandırma başarılı"
     }
   },
   "options": {
@@ -33,13 +58,11 @@
       "init": {
         "data": {
           "scan_interval": "Sorgulama aralığı (saniye)",
-          "session_renew": "Oturumu yenileme aralığı (dakika)",
-          "discovery": "IP değişirse kamerayı bul (MAC ile arama)"
+          "session_renew": "Oturumu yenileme aralığı (dakika)"
         },
         "data_description": {
-          "scan_interval": "TP-Link entegrasyonu 5 saniyede bir sorgular.",
-          "session_renew": "Kameralar oturumu girişten yaklaşık 10 dakika sonra kapatır ve sonraki istek bir kez başarısız olur. Entegrasyon bundan önce yeniden giriş yapar. 0 kapatır.",
-          "discovery": "TP-Link entegrasyonundaki gibi, açılışta ve 15 dakikada bir kamerayı MAC adresiyle arar. Kameranın sabit IP'si varsa kapatın."
+          "scan_interval": "Alarm ve bildirim ayarlarının ne sıklıkla okunacağı.",
+          "session_renew": "Kameralar oturumu girişten yaklaşık 10 dakika sonra kapatır. pytapo o zaman yeniden giriş yapıp isteği tekrarlar; entegrasyon bundan önce yeniden giriş yapar. 0 kapatır."
         }
       }
     }
