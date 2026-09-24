@@ -3,41 +3,41 @@
     "step": {
       "user": {
         "title": "Add a Tapo camera",
-        "description": "Enter the camera's IP address on your home network and the password of the TP-Link account you log in to the Tapo app with.\n\nThe camera is reached directly on your home network with this password; TP-Link's servers are not contacted.",
+        "description": "Enter the camera's IP address and cloud password. The connection stays entirely on your home network.",
         "data": {
           "host": "IP address",
-          "cloud_password": "TP-Link account password"
+          "cloud_password": "Cloud password"
         },
         "data_description": {
-          "host": "The camera's IP address on your home network, e.g. 192.168.1.50. The Tapo app shows it under camera → Settings → Device info. A fixed IP address (DHCP reservation) is recommended.",
-          "cloud_password": "The password you log in to the Tapo app with. The camera accepts it locally for the \"admin\" user; Tapo Control logs in the same way with a cloud password."
+          "host": "The camera's IP address on your home network (e.g. 192.168.1.50). In the Tapo app: camera → Settings → Device info. Give the camera a fixed IP address in your router so it does not change.",
+          "cloud_password": "The password of the TP-Link account you log in to the Tapo app with. The camera is reached with it on your home network as the \"admin\" user; the password is not sent to TP-Link's servers."
         }
       },
       "reauth_confirm": {
-        "title": "Enter the password again",
-        "description": "The camera rejected the password several times in a row. If you changed your TP-Link account password, enter the new one.",
+        "title": "Enter the cloud password again",
+        "description": "The camera did not accept the saved password. If you changed your TP-Link account password, enter the new one.",
         "data": {
-          "cloud_password": "TP-Link account password"
+          "cloud_password": "Cloud password"
         },
         "data_description": {
-          "cloud_password": "The password you log in to the Tapo app with. The camera accepts it locally for the \"admin\" user; Tapo Control logs in the same way with a cloud password."
+          "cloud_password": "The password of the TP-Link account you log in to the Tapo app with. The camera is reached with it on your home network as the \"admin\" user; the password is not sent to TP-Link's servers."
         }
       },
       "reconfigure": {
         "title": "Reconfigure the camera",
-        "description": "Change the camera's IP address or TP-Link account password. If a different camera answers at the new IP address, nothing is saved.",
+        "description": "Change the camera's IP address or cloud password. If a different camera answers at the new IP address, nothing is saved.",
         "data": {
           "host": "IP address",
-          "cloud_password": "TP-Link account password"
+          "cloud_password": "Cloud password"
         },
         "data_description": {
-          "host": "The camera's IP address on your home network, e.g. 192.168.1.50. The Tapo app shows it under camera → Settings → Device info. A fixed IP address (DHCP reservation) is recommended.",
-          "cloud_password": "The password you log in to the Tapo app with. The camera accepts it locally for the \"admin\" user; Tapo Control logs in the same way with a cloud password."
+          "host": "The camera's IP address on your home network (e.g. 192.168.1.50). In the Tapo app: camera → Settings → Device info. Give the camera a fixed IP address in your router so it does not change.",
+          "cloud_password": "The password of the TP-Link account you log in to the Tapo app with. The camera is reached with it on your home network as the \"admin\" user; the password is not sent to TP-Link's servers."
         }
       }
     },
     "error": {
-      "invalid_auth": "The password was not accepted. Enter the password of the TP-Link account you log in to the Tapo app with.",
+      "invalid_auth": "The cloud password was not accepted. Enter the password of the TP-Link account you log in to the Tapo app with.",
       "cannot_connect": "Cannot connect to the camera. Check the IP address and that the camera is on and connected.",
       "unknown": "Unexpected error. See the Home Assistant log for details."
     },
@@ -51,11 +51,13 @@
   "options": {
     "step": {
       "init": {
+        "title": "Camera options",
+        "description": "Set how often the camera is polled. The change applies at once, without reconnecting.",
         "data": {
           "scan_interval": "Polling interval (seconds)"
         },
         "data_description": {
-          "scan_interval": "How often the alarm and notification settings are read."
+          "scan_interval": "How often the alarm and notification settings are read. Default 5, at least 5. A higher value puts less load on the camera; changes made in the Tapo app show up later in Home Assistant."
         }
       }
     }

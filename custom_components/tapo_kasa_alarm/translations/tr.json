@@ -3,41 +3,41 @@
     "step": {
       "user": {
         "title": "Tapo kamera ekle",
-        "description": "Kameranın ev ağınızdaki IP adresini ve Tapo uygulamasına giriş yaptığınız TP-Link hesabının şifresini girin.\n\nKameraya bu şifreyle doğrudan ev ağınız içinden bağlanılır; TP-Link sunucularına bağlanılmaz.",
+        "description": "Kameranın IP adresini ve bulut şifresini girin. Bağlantı tamamen ev ağınızın içinden kurulur.",
         "data": {
           "host": "IP adresi",
-          "cloud_password": "TP-Link hesap şifresi"
+          "cloud_password": "Bulut şifresi"
         },
         "data_description": {
-          "host": "Kameranın ev ağındaki IP adresi, örneğin 192.168.1.50. Tapo uygulamasında kamera → Ayarlar → Cihaz bilgisi bölümünde görünür. Modeminizden kameraya sabit IP vermeniz önerilir.",
-          "cloud_password": "Tapo uygulamasına giriş yaparken kullandığınız şifre. Kamera bu şifreyi yerel girişte \"admin\" kullanıcısı için kabul eder; Tapo Control de bulut şifresiyle böyle girer."
+          "host": "Kameranın ev ağınızdaki IP adresi (örneğin 192.168.1.50). Tapo uygulamasında: kamera → Ayarlar → Cihaz bilgisi. IP'nin değişmemesi için modeminizden kameraya sabit IP verin.",
+          "cloud_password": "Tapo uygulamasına giriş yaptığınız TP-Link hesabının şifresi. Kameraya bu şifreyle ev ağınızın içinden, \"admin\" kullanıcısıyla bağlanılır; şifre TP-Link sunucularına gönderilmez."
         }
       },
       "reauth_confirm": {
-        "title": "Şifreyi yeniden girin",
-        "description": "Kamera şifreyi art arda kabul etmedi. TP-Link hesabınızın şifresini değiştirdiyseniz yeni şifreyi girin.",
+        "title": "Bulut şifresini yeniden girin",
+        "description": "Kamera kayıtlı şifreyi kabul etmedi. TP-Link hesabınızın şifresini değiştirdiyseniz yeni şifreyi girin.",
         "data": {
-          "cloud_password": "TP-Link hesap şifresi"
+          "cloud_password": "Bulut şifresi"
         },
         "data_description": {
-          "cloud_password": "Tapo uygulamasına giriş yaparken kullandığınız şifre. Kamera bu şifreyi yerel girişte \"admin\" kullanıcısı için kabul eder; Tapo Control de bulut şifresiyle böyle girer."
+          "cloud_password": "Tapo uygulamasına giriş yaptığınız TP-Link hesabının şifresi. Kameraya bu şifreyle ev ağınızın içinden, \"admin\" kullanıcısıyla bağlanılır; şifre TP-Link sunucularına gönderilmez."
         }
       },
       "reconfigure": {
         "title": "Kamerayı yeniden yapılandır",
-        "description": "Kameranın IP adresini veya TP-Link hesap şifresini değiştirin. Yeni IP adresinde başka bir kamera cevap verirse değişiklik kaydedilmez.",
+        "description": "Kameranın IP adresini veya bulut şifresini değiştirin. Yeni IP adresinde başka bir kamera cevap verirse değişiklik kaydedilmez.",
         "data": {
           "host": "IP adresi",
-          "cloud_password": "TP-Link hesap şifresi"
+          "cloud_password": "Bulut şifresi"
         },
         "data_description": {
-          "host": "Kameranın ev ağındaki IP adresi, örneğin 192.168.1.50. Tapo uygulamasında kamera → Ayarlar → Cihaz bilgisi bölümünde görünür. Modeminizden kameraya sabit IP vermeniz önerilir.",
-          "cloud_password": "Tapo uygulamasına giriş yaparken kullandığınız şifre. Kamera bu şifreyi yerel girişte \"admin\" kullanıcısı için kabul eder; Tapo Control de bulut şifresiyle böyle girer."
+          "host": "Kameranın ev ağınızdaki IP adresi (örneğin 192.168.1.50). Tapo uygulamasında: kamera → Ayarlar → Cihaz bilgisi. IP'nin değişmemesi için modeminizden kameraya sabit IP verin.",
+          "cloud_password": "Tapo uygulamasına giriş yaptığınız TP-Link hesabının şifresi. Kameraya bu şifreyle ev ağınızın içinden, \"admin\" kullanıcısıyla bağlanılır; şifre TP-Link sunucularına gönderilmez."
         }
       }
     },
     "error": {
-      "invalid_auth": "Şifre kabul edilmedi. Tapo uygulamasına giriş yaptığınız TP-Link hesabının şifresini girin.",
+      "invalid_auth": "Bulut şifresi kabul edilmedi. Tapo uygulamasına giriş yaptığınız TP-Link hesabının şifresini girin.",
       "cannot_connect": "Kameraya bağlanılamadı. IP adresini ve kameranın açık ve ağa bağlı olduğunu kontrol edin.",
       "unknown": "Beklenmeyen bir hata oluştu. Ayrıntılar için Home Assistant log'una bakın."
     },
@@ -51,11 +51,13 @@
   "options": {
     "step": {
       "init": {
+        "title": "Kamera seçenekleri",
+        "description": "Kameranın ne sıklıkla sorgulanacağını ayarlayın. Değişiklik kameraya yeniden bağlanmadan hemen uygulanır.",
         "data": {
           "scan_interval": "Sorgulama aralığı (saniye)"
         },
         "data_description": {
-          "scan_interval": "Alarm ve bildirim ayarlarının ne sıklıkla okunacağı."
+          "scan_interval": "Alarm ve bildirim ayarlarının kaç saniyede bir okunacağı. Varsayılan 5, en az 5. Değeri büyütmek kameraya daha az yük bindirir; Tapo uygulamasından yapılan değişiklikler Home Assistant'ta daha geç görünür."
         }
       }
     }

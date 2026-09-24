@@ -299,32 +299,23 @@ async def test_config_flow_errors(hass: HomeAssistant) -> None:
         assert result["errors"] == {"base": expected}
 
 
-async def test_migrate_from_kasa(hass: HomeAssistant) -> None:
-    """1.x entries keep working: the cloud password logs in as admin."""
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        version=1,
-        data={
-            "host": "192.168.1.50",
-            "username": "me@example.com",
-            "password": "cloudpw",
-            "connection_parameters": {"device_family": "SMART.IPCAMERA"},
-        },
-        options={"scan_interval": 10, "session_renew": 8, "discovery": False},
-        unique_id="aa:bb:cc:dd:ee:ff",
-    )
-    entry.add_to_hass(hass)
-    with patch(CONNECT, return_value=FakeTapo()) as connect:
-        await hass.config_entries.async_setup(entry.entry_id)
-        await hass.async_block_till_done()
+async def test_login_type_saved_on_first_connection(hass: HomeAssistant) -> None:
+    """Like Tapo Control, the KLAP login type is found once and saved."""
+    data = {"host": "192.168.1.50", "cloud_password": "cloudpw"}
+    entry, connect = await _setup(hass, FakeTapo(), data=data)
     assert entry.state is ConfigEntryState.LOADED
-    assert entry.version == 2
-    assert entry.data == DATA
-    assert entry.options == {"scan_interval": 10}
-    # The login type is found on the first connection and saved.
     assert connect.call_args.args[1:] == ("192.168.1.50", "cloudpw", None)
-    # Entity IDs stay the same.
-    assert hass.states.get("switch.bahce_alarm") is not None
+    assert entry.data["is_klap"] is False
+
+
+async def test_login_type_of_another_device_is_not_saved(hass: HomeAssistant) -> None:
+    """Another device at the camera's IP never decides the saved login type."""
+    data = {"host": "192.168.1.50", "cloud_password": "cloudpw"}
+    other = FakeTapo(mac="11-22-33-44-55-66")
+    other.isKLAP = True
+    entry, _ = await _setup(hass, other, data=data)
+    assert entry.state is ConfigEntryState.SETUP_RETRY
+    assert "is_klap" not in entry.data
 
 
 async def test_camera_account_entry_asks_for_cloud_password(hass: HomeAssistant) -> None:
@@ -443,6 +434,23 @@ async def test_rejected_login_on_setup_is_tried_again(hass: HomeAssistant) -> No
     assert entry.state is ConfigEntryState.SETUP_ERROR
     flows = hass.config_entries.flow.async_progress()
     assert [flow["context"]["source"] for flow in flows] == ["reauth"]
+
+    # The password is entered again and accepted, but the first poll fails
+    # (the camera is still starting). The count starts over at the accepted
+    # login, so one more rejection right after does not ask for it at once.
+    for flow in flows:
+        hass.config_entries.flow.async_abort(flow["flow_id"])
+    starting = FakeTapo()
+    starting.alert_error = True
+    with patch(CONNECT, return_value=starting):
+        await hass.config_entries.async_reload(entry.entry_id)
+        await hass.async_block_till_done()
+    assert entry.state is ConfigEntryState.SETUP_RETRY
+    with patch(CONNECT, side_effect=AuthenticationError("Invalid authentication data")):
+        await hass.config_entries.async_reload(entry.entry_id)
+        await hass.async_block_till_done()
+    assert entry.state is ConfigEntryState.SETUP_RETRY
+    assert not hass.config_entries.flow.async_progress()
 
 
 async def test_rejected_login_on_poll_is_tried_again(hass: HomeAssistant) -> None:
