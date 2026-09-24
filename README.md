@@ -28,8 +28,8 @@ Tamamen **yerel** çalışır: kameralarla ev ağı içinden konuşur, TP-Link b
 - Kamera bildirim ayarını bildirmiyorsa Bildirimler anahtarı eklenmez.
 
 ## Kurulum (HACS)
-1. HACS → Integrations → sağ üst menü → **Custom repositories**
-2. Depo: `https://github.com/ibrahimdoqn/Kasa-Camera-Control`, kategori: **Integration**
+1. HACS → sağ üst menü (⋮) → **Custom repositories**
+2. Depo: `https://github.com/ibrahimdoqn/Kasa-Camera-Control`, tür: **Integration**
 3. **Kasa Camera Control** kurun ve Home Assistant'ı yeniden başlatın.
 4. Ayarlar → Cihazlar ve Hizmetler → **Entegrasyon ekle** → *Kasa Camera Control*
 5. Açılan formu doldurun:
@@ -53,7 +53,7 @@ Ayarlar → Cihazlar ve Hizmetler → **Kasa Camera Control** → kamera → **Y
 
 - **Sorgulama aralığı (saniye):** Varsayılan 5, en az 5. Değişiklik kameraya yeniden bağlanmadan uygulanır.
 
-IP adresini veya bulut şifresini değiştirmek için **Yeniden yapılandır** menüsünü kullanın. Yeni IP'de başka bir kamera cevap verirse değişiklik kaydedilmez.
+IP adresini veya bulut şifresini değiştirmek için: Ayarlar → Cihazlar ve Hizmetler → **Kasa Camera Control** → kamera → ⋮ → **Yeniden yapılandır**. Yeni IP'de başka bir kamera cevap verirse değişiklik kaydedilmez.
 
 ## Yerel çalışma
 Entegrasyon kameralarla doğrudan ev ağınızın içinde konuşur ve TP-Link bulutuna hiçbir istek göndermez (`local_polling`).
@@ -113,7 +113,7 @@ Kameraya Tapo Control'ün `registerController`'ındaki ayarlarla bağlanılır:
 
 ### Yeniden başlatma düğmesine basınca
 - pytapo'nun `reboot` komutu (`rebootDevice`) gönderilir, Tapo Control'deki gibi.
-- Yeniden başlatmadan sonra sorgu yapılmaz. Kamera bir süre "kullanılamıyor" görünür ve açılınca kendiliğinden geri gelir.
+- Komuttan sonra ayrıca sorgu yapılmaz; normal sorgular devam eder. Kamera açılana kadar anahtarlar "kullanılamıyor" görünür, sonra kendiliğinden geri gelir. Bu kesinti **Kopma sayısı** sensörüne de bir kopma olarak yazılır.
 
 ### Alarm ayarını okuma ve yazma
 - Alarm ayarı yalnızca `getAlertConfig` ile okunur ve `setAlertConfig` ile yazılır. Bu, kameranın güncel alarm komutudur; Tapo uygulaması da bu kameralarda bunu kullanır.
@@ -129,7 +129,7 @@ Kameraya Tapo Control'ün `registerController`'ındaki ayarlarla bağlanılır:
 - Bağlantı hatasında pytapo oturumu sıfırlar, 1 saniye bekler ve isteği bir kez daha dener.
 - Kamera oturumun dolduğunu söylerse (`-40401`) pytapo yeniden giriş yapıp isteği bir kez tekrarlar.
 - Kamera yine cevap vermezse anahtarlar "kullanılamıyor" görünür ve bir sonraki sorgu zamanı beklenir.
-- Giriş reddedilirse ("Invalid authentication data") hemen şifre istenmez. Kameralar geçerli bir girişi de kısa süre reddedebilir, örneğin yeniden başlarken. Tapo Control'deki gibi art arda 3 red tolere edilir: kurulumda Home Assistant tekrar dener, sorguda anahtarlar o süre "kullanılamıyor" görünür. **4. red üst üste gelirse** Home Assistant şifreyi yeniden ister. Arada bir başarılı sorgu sayacı sıfırlar. Komutlar (anahtara basma) şifre istemez; red olursa ekranda hata gösterilir. Kamera çok sayıda başarısız girişten sonra kendini geçici olarak kilitlerse ("Temporary Suspension") yeniden bilgi istenmez, kilit açılınca tekrar denenir.
+- Giriş reddedilirse ("Invalid authentication data") hemen şifre istenmez. Kameralar geçerli bir girişi de kısa süre reddedebilir, örneğin yeniden başlarken. Tapo Control'deki gibi art arda 3 red tolere edilir: kurulumda Home Assistant tekrar dener, sorguda anahtarlar o süre "kullanılamıyor" görünür. **4. red üst üste gelirse** Home Assistant şifreyi yeniden ister. Arada kabul edilen bir giriş veya başarılı bir sorgu sayacı sıfırlar. Komutlar (anahtara basma) şifre istemez; red olursa ekranda hata gösterilir. Kamera çok sayıda başarısız girişten sonra kendini geçici olarak kilitlerse ("Temporary Suspension") yeniden bilgi istenmez, kilit açılınca tekrar denenir.
 
 ### Bağlantı tanılama
 Her kameranın cihaz sayfasındaki **Tanılama** bölümünde iki sensör vardır. Kameraya ek istek göndermezler; entegrasyonun zaten gördüğünü gösterirler.
@@ -184,7 +184,14 @@ Tapo uygulaması (Android 3.21.112) incelenerek karşılaştırıldı:
     logs:
       custom_components.tapo_kasa_alarm: debug
   ```
-  pytapo'nun kameraya giden istekleri de görmek için `custom_components.tapo_kasa_alarm.api.pytapo: debug` satırını ekleyin. Bu satır çok log üretir, sorunu bulduktan sonra kaldırın.
+  Bu ayar pytapo'nun kameraya giden isteklerini de gösterir ve çok log üretir. Yalnızca entegrasyonun kendi kayıtlarını görmek için pytapo'yu ayrıca kısın:
+  ```yaml
+  logger:
+    logs:
+      custom_components.tapo_kasa_alarm: debug
+      custom_components.tapo_kasa_alarm.api.pytapo: warning
+  ```
+  Sorunu bulduktan sonra bu satırları kaldırın.
 
 ## Logo
 Logo, Tapo Control entegrasyonunun logosudur. Home Assistant 2026.3 ve sonrası logoyu `brand/` klasöründen gösterir. Daha eski sürümlerde logo yerine boş simge görünür.
