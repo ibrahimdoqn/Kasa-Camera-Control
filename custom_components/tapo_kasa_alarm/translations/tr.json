@@ -81,35 +81,6 @@
       "reboot": {
         "name": "Yeniden başlat"
       }
-    },
-    "sensor": {
-      "connected_since": {
-        "name": "Bağlantı kuruldu"
-      },
-      "disconnects": {
-        "name": "Kopma sayısı",
-        "state_attributes": {
-          "last_disconnect": {
-            "name": "Son kopma"
-          },
-          "last_disconnect_reason": {
-            "name": "Son kopma sebebi",
-            "state": {
-              "reboot": "Reddedildi (kamera yeniden başlıyor)",
-              "unreachable": "Ulaşılamıyor",
-              "timeout": "Zaman aşımı",
-              "auth": "Giriş reddedildi",
-              "error": "Hata"
-            }
-          },
-          "last_outage_seconds": {
-            "name": "Son kesinti (sn)"
-          },
-          "down_since": {
-            "name": "Kesinti başlangıcı"
-          }
-        }
-      }
     }
   }
 }

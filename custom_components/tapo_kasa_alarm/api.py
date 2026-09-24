@@ -15,7 +15,6 @@ import logging
 from typing import Any
 
 from pytapo import Tapo
-import requests
 
 from homeassistant.core import HomeAssistant
 
@@ -90,42 +89,6 @@ def alarm_modes(alarm: dict[str, Any]) -> list[str]:
     change them when alarm_mode changes.
     """
     return list(alarm.get("alarm_mode") or [])
-
-
-def disconnect_reason(err: BaseException) -> str:
-    """Classify why a poll failed, for the diagnostic sensors.
-
-    reboot: the camera is on the network but refuses the connection
-            (ConnectionRefusedError, errno 111), typically while it restarts
-    unreachable: the camera is not on the network (e.g. errno 113, Wi-Fi drop)
-    timeout: the camera did not answer in time
-    auth: the login was rejected
-    error: anything else (e.g. an error answer from the camera)
-    """
-    if isinstance(err, AuthenticationError):
-        return "auth"
-    seen: set[int] = set()
-    todo: list[Any] = [err]
-    timeout = connection = False
-    while todo:
-        item = todo.pop()
-        if not isinstance(item, BaseException) or id(item) in seen:
-            continue
-        seen.add(id(item))
-        if isinstance(item, ConnectionRefusedError):
-            return "reboot"
-        if isinstance(item, (requests.Timeout, TimeoutError)):
-            timeout = True
-        elif isinstance(item, (requests.ConnectionError, OSError)):
-            connection = True
-        todo.extend(
-            [item.__cause__, item.__context__, getattr(item, "reason", None), *item.args]
-        )
-    if timeout:
-        return "timeout"
-    if connection:
-        return "unreachable"
-    return "error"
 
 
 def _response(responses: list[Any], method: str) -> dict[str, Any] | None:

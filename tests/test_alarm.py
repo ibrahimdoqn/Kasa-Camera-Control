@@ -14,6 +14,7 @@ import requests
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 
 from custom_components.tapo_kasa_alarm.const import DOMAIN
@@ -510,101 +511,38 @@ async def test_options_flow(hass: HomeAssistant) -> None:
     assert entry.state is ConfigEntryState.LOADED
 
 
-# --- Connection diagnostics ------------------------------------------------
-
-
-def _refused() -> requests.ConnectionError:
-    """What pytapo raises while the camera restarts its services."""
-    try:
-        try:
-            raise ConnectionRefusedError(111, "Connection refused")
-        except ConnectionRefusedError as refused:
-            raise OSError("Failed to establish a new connection") from refused
-    except OSError as err:
-        return requests.ConnectionError(err)
-
-
-async def test_connection_diagnostic_sensors(hass: HomeAssistant) -> None:
+async def test_unreachable_camera(hass: HomeAssistant) -> None:
+    """While the camera does not answer the switches are unavailable."""
     cam = FakeTapo()
     entry, _ = await _setup(hass, cam)
-    coordinator = entry.runtime_data
-
-    since = hass.states.get("sensor.bahce_connected_since")
-    assert since.state not in ("unknown", "unavailable")
-    assert hass.states.get("sensor.bahce_disconnects").state == "0"
-
-    cam.fail = _refused()
-    await coordinator.async_refresh()
-    await coordinator.async_refresh()  # same outage, counted once
+    cam.fail = requests.ConnectionError("Connection refused")
+    await entry.runtime_data.async_refresh()
     await hass.async_block_till_done()
     assert hass.states.get("switch.bahce_alarm").state == "unavailable"
-    count = hass.states.get("sensor.bahce_disconnects")
-    assert count.state == "1"
-    assert count.attributes["last_disconnect_reason"] == "reboot"
-    assert count.attributes["down_since"] is not None
-    assert hass.states.get("sensor.bahce_connected_since").state == "unknown"
+    assert not hass.config_entries.flow.async_progress()
 
     cam.fail = None
-    await coordinator.async_refresh()
+    await entry.runtime_data.async_refresh()
     await hass.async_block_till_done()
     assert hass.states.get("switch.bahce_alarm").state == "off"
-    count = hass.states.get("sensor.bahce_disconnects")
-    assert count.state == "1"
-    assert count.attributes["down_since"] is None
-    assert count.attributes["last_outage_seconds"] is not None
-    assert hass.states.get("sensor.bahce_connected_since").state != "unknown"
 
 
-def test_disconnect_reasons() -> None:
-    from custom_components.tapo_kasa_alarm.api import (
-        AuthenticationError,
-        CameraError,
-        _wrap,
-        disconnect_reason,
+async def test_connection_sensors_are_removed(hass: HomeAssistant) -> None:
+    """The connection sensors earlier versions created are removed."""
+    entry = MockConfigEntry(
+        domain=DOMAIN, version=2, data=DATA, unique_id="aa:bb:cc:dd:ee:ff"
     )
-
-    def wrapped(err: Exception) -> CameraError:
-        try:
-            raise _wrap(err) from err
-        except CameraError as camera_error:
-            return camera_error
-
-    assert disconnect_reason(wrapped(_refused())) == "reboot"
-    assert (
-        disconnect_reason(wrapped(requests.ConnectionError(OSError(113, "no route"))))
-        == "unreachable"
-    )
-    assert disconnect_reason(wrapped(requests.ReadTimeout("timeout"))) == "timeout"
-    assert disconnect_reason(AuthenticationError("bad")) == "auth"
-    assert disconnect_reason(wrapped(Exception("Error: -40106"))) == "error"
-
-
-async def test_disconnect_count_starts_from_zero_after_restart(
-    hass: HomeAssistant,
-) -> None:
-    from pytest_homeassistant_custom_component.common import (
-        mock_restore_cache_with_extra_data,
-    )
-
-    from homeassistant.core import State
-
-    mock_restore_cache_with_extra_data(
-        hass,
-        [
-            (
-                State(
-                    "sensor.bahce_disconnects",
-                    "4",
-                    {"last_disconnect": "2026-09-23T21:47:49+00:00",
-                     "last_disconnect_reason": "reboot",
-                     "last_outage_seconds": 60},
-                ),
-                {"native_value": 4, "native_unit_of_measurement": None},
-            )
-        ],
-    )
-    await _setup(hass, FakeTapo())
-    count = hass.states.get("sensor.bahce_disconnects")
-    assert count.state == "0"
-    assert count.attributes["last_disconnect_reason"] is None
-    assert count.attributes["last_outage_seconds"] is None
+    entry.add_to_hass(hass)
+    registry = er.async_get(hass)
+    old = [
+        registry.async_get_or_create(
+            "sensor", DOMAIN, f"aa:bb:cc:dd:ee:ff_{key}", config_entry=entry
+        )
+        for key in ("connected_since", "disconnects")
+    ]
+    with patch(CONNECT, return_value=FakeTapo()):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+    assert entry.state is ConfigEntryState.LOADED
+    assert all(registry.async_get(entity.entity_id) is None for entity in old)
+    assert hass.states.get("button.bahce_reboot") is not None

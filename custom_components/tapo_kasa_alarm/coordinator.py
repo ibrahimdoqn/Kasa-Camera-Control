@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from datetime import datetime
 import logging
 from typing import Any
 
@@ -11,14 +10,8 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
-from homeassistant.util import dt as dt_util
 
-from .api import (
-    AuthenticationError,
-    CameraError,
-    TapoAlarmApi,
-    disconnect_reason,
-)
+from .api import AuthenticationError, CameraError, TapoAlarmApi
 from .const import AUTH_RETRIES, CONF_SCAN_INTERVAL, DOMAIN, scan_interval
 
 _LOGGER = logging.getLogger(__name__)
@@ -61,55 +54,20 @@ class TapoAlarmCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             update_interval=scan_interval(entry.options.get(CONF_SCAN_INTERVAL)),
         )
         self.api = api
-        # Connection diagnostics (shown by the diagnostic sensors).
-        self.connected_since: datetime | None = dt_util.utcnow()
-        self.down_since: datetime | None = None
-        self.disconnects = 0
-        self.last_disconnect: datetime | None = None
-        self.last_disconnect_reason: str | None = None
-        self.last_outage_seconds: int | None = None
 
     async def _async_update_data(self) -> dict[str, Any]:
         try:
             data = await self.api.get_state()
         except AuthenticationError as err:
-            self._connection_lost(err)
             if auth_failed(self.hass, self.config_entry):
                 raise ConfigEntryAuthFailed(
                     f"Authentication failed on update: {err}"
                 ) from err
             raise UpdateFailed(f"Login rejected, trying again: {err}") from err
         except CameraError as err:
-            self._connection_lost(err)
             raise UpdateFailed(f"Error on update: {err}") from err
         auth_ok(self.hass, self.config_entry)
-        self._connection_ok()
         return data
-
-    def _connection_lost(self, err: Exception) -> None:
-        """Count a disconnect once per outage (a run of failed polls)."""
-        if self.down_since is not None:
-            return
-        now = dt_util.utcnow()
-        self.down_since = now
-        self.connected_since = None
-        self.disconnects += 1
-        self.last_disconnect = now
-        self.last_disconnect_reason = disconnect_reason(err)
-        _LOGGER.info(
-            "%s: connection lost (%s): %s", self.name, self.last_disconnect_reason, err
-        )
-
-    def _connection_ok(self) -> None:
-        if self.down_since is None:
-            return
-        now = dt_util.utcnow()
-        self.last_outage_seconds = round((now - self.down_since).total_seconds())
-        _LOGGER.info(
-            "%s: connection back after %s seconds", self.name, self.last_outage_seconds
-        )
-        self.down_since = None
-        self.connected_since = now
 
     async def async_command(self, func: Callable[[], Awaitable[Any]], name: str) -> Any:
         """Run a command and map its errors.
@@ -140,7 +98,6 @@ class TapoAlarmCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return await write(fresh)
 
         sent = await self.async_command(_run, name)
-        self._connection_ok()
         self.data = {**self.data, **fresh}
         return sent
 

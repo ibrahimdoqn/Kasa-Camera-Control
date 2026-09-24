@@ -21,8 +21,6 @@ Nasıl çalıştığının ayrıntıları: [ARCHITECTURE.md](ARCHITECTURE.md)
 | `switch.<kamera>_alarm_isigi` | Alarm çalınca ışık kullanılsın mı |
 | `switch.<kamera>_bildirimler` | Tapo uygulaması bildirimlerini açar/kapatır |
 | `button.<kamera>_yeniden_baslat` | Kamerayı yeniden başlatır (Tanılama bölümünde) |
-| `sensor.<kamera>_baglanti_kuruldu` | Bağlantının ne zaman kurulduğu (Tanılama bölümünde) |
-| `sensor.<kamera>_kopma_sayisi` | Bağlantının kaç kez koptuğu ve son kopmanın ayrıntıları (Tanılama bölümünde) |
 
 - Ses veya ışıktan en az biri açık kalmalıdır; kamera bunu zorunlu tutar.
 - Varlık kimlikleri Home Assistant'ın diline göre oluşur. Örneğin İngilizce kurulumda `switch.<kamera>_alarm_sound` olur.
@@ -76,21 +74,9 @@ automation:
 
 Alarm zaten açıksa kameraya bir şey yazılmaz; otomasyonu gönül rahatlığıyla sık çalıştırabilirsiniz.
 
-## Bağlantı tanılama
-Her kameranın cihaz sayfasındaki **Tanılama** bölümünde:
-
-- **Bağlantı kuruldu:** Mevcut bağlantının ne zaman kurulduğu. Kesinti sırasında "Bilinmiyor" görünür.
-- **Kopma sayısı:** Home Assistant başladığından beri kaç kez bağlantı koptuğu. Öznitelikleri son kopmanın zamanını, sebebini ve süresini gösterir. Sebepler:
-  - `reboot`: Kamera ağda ama bağlantıyı reddediyor; genelde servislerini yeniden başlatıyordur.
-  - `unreachable`: Kamera ağda görünmüyor (Wi-Fi kopması, kapanma).
-  - `timeout`: Kamera zamanında cevap vermedi.
-  - `auth`: Giriş reddedildi.
-  - `error`: Diğer durumlar.
-
-Kopma zamanlarını RTSP kaydı yapan sistemin veya modemin log'uyla karşılaştırarak kameranın ne zaman ve neden koptuğunu görebilirsiniz.
-
 ## Sorun giderme
 - **Anahtarlar sık sık "kullanılamıyor" oluyor:** Kamera o anda ağda değildir veya servislerini yeniden başlatıyordur. **Ping** entegrasyonuyla kameranın IP'si için bir sensör ekleyin; ping de düşüyorsa sorun Wi-Fi'da veya kameradadır.
+- **Alarm anahtarı kısa süre sonra eski değerine dönüyor:** Kamera yazmayı kabul edip hemen ardından çökmüş ve yeni ayarı kaydetmeden yeniden başlamıştır (RTSP de kopar). Bu kameranın firmware hatasıdır; anahtar kameranın gerçek durumunu gösterir. Tapo uygulamasından firmware güncellemesine bakın.
 - **Şifre soruluyor:** Kamera girişi art arda 4 kez reddetmiştir. Tapo uygulamasına giriş yaptığınız TP-Link hesabının şifresini girin. Art arda yanlış denemeden sonra kamera girişi bir süre kilitler; birkaç dakika bekleyin.
 - **Formda `host`, `cloud_password` gibi ham alan adları görünüyor:** Arayüz çevirileri yüklenmemiştir. Tarayıcıda Ctrl+F5 ile yenileyin veya mobil uygulamayı kapatıp açın.
 - **Otomasyon "kullanılamıyor"dan dönünce tetikleniyor:** Tetikleyiciye `not_from: unavailable` ekleyin:

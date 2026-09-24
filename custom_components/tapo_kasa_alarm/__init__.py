@@ -14,15 +14,22 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import format_mac
 
 from .api import AuthenticationError, CameraError, TapoAlarmApi, basic_info, connect
-from .const import CONF_CLOUD_PASSWORD, CONF_IS_KLAP, CONF_SCAN_INTERVAL, scan_interval
+from .const import (
+    CONF_CLOUD_PASSWORD,
+    CONF_IS_KLAP,
+    CONF_SCAN_INTERVAL,
+    DOMAIN,
+    scan_interval,
+)
 from .coordinator import TapoAlarmCoordinator, auth_failed, auth_ok
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS = [Platform.BUTTON, Platform.SENSOR, Platform.SWITCH]
+PLATFORMS = [Platform.BUTTON, Platform.SWITCH]
 
 type TapoAlarmConfigEntry = ConfigEntry[TapoAlarmCoordinator]
 
@@ -76,6 +83,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: TapoAlarmConfigEntry) ->
         raise
 
     entry.runtime_data = coordinator
+    _remove_connection_sensors(hass, entry)
     entry.async_on_unload(entry.add_update_listener(_async_options_updated))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
@@ -95,3 +103,11 @@ async def _async_options_updated(hass: HomeAssistant, entry: TapoAlarmConfigEntr
         entry.options.get(CONF_SCAN_INTERVAL)
     )
 
+
+def _remove_connection_sensors(hass: HomeAssistant, entry: TapoAlarmConfigEntry) -> None:
+    """Drop the connection sensors earlier versions created."""
+    registry = er.async_get(hass)
+    for key in ("connected_since", "disconnects"):
+        unique_id = f"{entry.unique_id or entry.entry_id}_{key}"
+        if entity_id := registry.async_get_entity_id("sensor", DOMAIN, unique_id):
+            registry.async_remove(entity_id)
