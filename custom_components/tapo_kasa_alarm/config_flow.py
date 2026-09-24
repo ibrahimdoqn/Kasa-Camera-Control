@@ -18,9 +18,6 @@ from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import format_mac
 from homeassistant.helpers.selector import (
-    NumberSelector,
-    NumberSelectorConfig,
-    NumberSelectorMode,
     TextSelector,
     TextSelectorConfig,
     TextSelectorType,
@@ -29,13 +26,9 @@ from homeassistant.helpers.selector import (
 from .api import AuthenticationError, CameraError, basic_info, connect
 from .const import (
     CONF_CLOUD_PASSWORD,
-    CONF_IS_KLAP,
     CONF_SCAN_INTERVAL,
-    CONF_SESSION_RENEW,
     DEFAULT_SCAN_INTERVAL,
-    DEFAULT_SESSION_RENEW,
     DOMAIN,
-    MAX_SESSION_RENEW,
     MIN_SCAN_INTERVAL,
 )
 
@@ -57,7 +50,6 @@ def _validate(hass: HomeAssistant, host: str, cloud_password: str) -> dict[str, 
         return {
             "unique_id": format_mac(mac) if mac else info.get("dev_id") or host,
             "title": info.get("device_alias") or info.get("device_model") or host,
-            CONF_IS_KLAP: bool(controller.isKLAP),
         }
     finally:
         try:
@@ -100,10 +92,7 @@ class TapoAlarmConfigFlow(ConfigFlow, domain=DOMAIN):
                 self._abort_if_unique_id_configured(
                     updates={CONF_HOST: user_input[CONF_HOST]}
                 )
-                return self.async_create_entry(
-                    title=found["title"],
-                    data={**user_input, CONF_IS_KLAP: found[CONF_IS_KLAP]},
-                )
+                return self.async_create_entry(title=found["title"], data=user_input)
 
         return self.async_show_form(
             step_id="user",
@@ -134,7 +123,6 @@ class TapoAlarmConfigFlow(ConfigFlow, domain=DOMAIN):
                     data={
                         CONF_HOST: entry.data[CONF_HOST],
                         CONF_CLOUD_PASSWORD: user_input[CONF_CLOUD_PASSWORD],
-                        CONF_IS_KLAP: found[CONF_IS_KLAP],
                     },
                 )
 
@@ -157,10 +145,7 @@ class TapoAlarmConfigFlow(ConfigFlow, domain=DOMAIN):
             if found is not None:
                 await self.async_set_unique_id(found["unique_id"])
                 self._abort_if_unique_id_mismatch(reason="wrong_camera")
-                return self.async_update_reload_and_abort(
-                    entry,
-                    data={**user_input, CONF_IS_KLAP: found[CONF_IS_KLAP]},
-                )
+                return self.async_update_reload_and_abort(entry, data=user_input)
 
         return self.async_show_form(
             step_id="reconfigure",
@@ -178,7 +163,7 @@ class TapoAlarmConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class TapoAlarmOptionsFlow(OptionsFlow):
-    """Polling interval and session renewal options."""
+    """Polling interval option."""
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -196,24 +181,6 @@ class TapoAlarmOptionsFlow(OptionsFlow):
                             CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
                         ),
                     ): vol.All(vol.Coerce(int), vol.Range(min=MIN_SCAN_INTERVAL)),
-                    vol.Required(
-                        CONF_SESSION_RENEW,
-                        default=self.config_entry.options.get(
-                            CONF_SESSION_RENEW, DEFAULT_SESSION_RENEW
-                        ),
-                    ): vol.All(
-                        # A box like the polling interval (min + max would
-                        # otherwise be shown as a slider).
-                        NumberSelector(
-                            NumberSelectorConfig(
-                                min=0,
-                                max=MAX_SESSION_RENEW,
-                                step=1,
-                                mode=NumberSelectorMode.BOX,
-                            )
-                        ),
-                        vol.Coerce(int),
-                    ),
                 }
             ),
         )

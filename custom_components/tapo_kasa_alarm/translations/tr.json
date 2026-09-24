@@ -41,12 +41,10 @@
     "step": {
       "init": {
         "data": {
-          "scan_interval": "Sorgulama aralığı (saniye)",
-          "session_renew": "Oturumu yenileme aralığı (dakika)"
+          "scan_interval": "Sorgulama aralığı (saniye)"
         },
         "data_description": {
-          "scan_interval": "Alarm ve bildirim ayarlarının ne sıklıkla okunacağı.",
-          "session_renew": "Kameralar oturumu girişten yaklaşık 10 dakika sonra kapatır. pytapo o zaman yeniden giriş yapıp isteği tekrarlar; entegrasyon bundan önce yeniden giriş yapar. 0 kapatır."
+          "scan_interval": "Alarm ve bildirim ayarlarının ne sıklıkla okunacağı."
         }
       }
     }

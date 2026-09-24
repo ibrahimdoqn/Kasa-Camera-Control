@@ -43,20 +43,19 @@ Tamamen **yerel** çalışır: kameralarla ev ağı içinden konuşur, TP-Link b
 1. HACS'ta **Kasa Camera Control** sayfasından yeni sürümü indirin.
 2. Home Assistant'ı yeniden başlatın.
 
-Kameraları yeniden eklemeniz gerekmez. Artık kullanılmayan varlıklar (eski Siren ve Zengin bildirimler) ilk açılışta otomatik silinir.
+Kameraları yeniden eklemeniz gerekmez.
 
 ### 1.x'ten 2.0.0'a geçiş
 - Kurulumlar **yerinde** güncellenir. Varlık kimlikleri değişmez, otomasyonlar bozulmaz.
 - 1.x TP-Link hesabının e-posta ve şifresini kullanıyordu. python-kasa kameraya bu şifreyle `admin` olarak giriyordu. 2.0.0 bu şifreyi **TP-Link bulut şifresi** olarak taşır, yani Tapo Control'ün bulut şifresiyle girdiği gibi girer. Yeni bilgi girmeden çalışmaya devam eder.
 - 2.0.0'da kamera hesabıyla da giriş yapılabiliyordu; artık yalnızca bulut şifresi kullanılır. Kamera hesabıyla eklenmiş bir kamera varsa Home Assistant bulut şifresini ister.
-- **MAC ile IP arama** seçeneği kaldırıldı (pytapo'da yok).
+- **MAC ile IP arama** ve **oturum yenileme** seçenekleri kaldırıldı. pytapo'da MAC ile arama yok; oturum dolunca da kendisi yeniden giriş yapıyor.
 - Geri dönmek isterseniz HACS'tan 1.6.8'i yükleyin. 2.0.0'ın güncellediği kayıtları 1.x okuyamaz; o durumda kameraları silip yeniden ekleyin.
 
 ## Seçenekler
 Ayarlar → Cihazlar ve Hizmetler → **Kasa Camera Control** → kamera → **Yapılandır**
 
 - **Sorgulama aralığı (saniye):** Varsayılan 5, en az 5. Değişiklik kameraya yeniden bağlanmadan uygulanır.
-- **Oturumu yenileme aralığı (dakika):** Varsayılan 8, en fazla 60, 0 kapatır. Kameralar oturumu girişten yaklaşık 10 dakika sonra kapatır; entegrasyon bundan önce yeniden giriş yapar. Ayrıntılar için [Oturum yenileme](#oturum-yenileme) bölümüne bakın.
 
 IP adresini veya bulut şifresini değiştirmek için **Yeniden yapılandır** menüsünü kullanın. Yeni IP'de başka bir kamera cevap verirse değişiklik kaydedilmez.
 
@@ -96,23 +95,20 @@ Kameraya Tapo Control'ün `registerController`'ındaki ayarlarla bağlanılır:
 - **pytapo 3.4.19:** Tapo Control'ün kullandığı sürüm. pytapo bloklayan bir kütüphane olduğu için her çağrı Home Assistant'ın arka plan iş parçacıklarında çalışır; Home Assistant'ın ana döngüsünü bekletmez.
 - **Giriş:** `admin` + TP-Link bulut şifresi. Tapo Control'e bulut şifresi girildiğinde de böyle girer.
 - **Her istek yeni HTTPS bağlantısıyla** gider (`reuseSession=False`), Tapo Control'deki gibi. Kamera oturumu (`stok`) ise korunur, her istekte yeniden giriş yapılmaz.
-- **KLAP:** Kamera eklenirken kameranın giriş türü (KLAP mı değil mi) bulunur ve kaydedilir. Sonraki açılışlarda yeniden aranmaz.
+- **KLAP:** pytapo her açılışta kameranın giriş türünü (KLAP mı değil mi) kendisi bulur.
 - **MAC kontrolü:** Bağlanılan cihazın MAC adresi kayıtlı kamerayla karşılaştırılır. O IP'de başka bir cihaz varsa kullanılmaz, kameralar karışmaz.
 - **Zaman aşımı:** 10 saniye (pytapo'nun varsayılanı).
-- Kamera başına **tek oturum** açık tutulur ve istekler sırayla gider.
+- pytapo kamera başına **tek oturum** tutar ve istekleri sırayla gönderir.
 
-### Oturum yenileme
-- Kameralar oturumu girişten yaklaşık **10 dakika** sonra, trafik olsa da olmasa da kapatır. pytapo bunu kameranın `-40401` (oturum doldu) cevabından anlar, yeniden giriş yapar ve isteği bir kez tekrarlar. Yani yenileme kapalı olsa da anahtarlar "kullanılamıyor" olmaz.
-- Bu entegrasyon oturumu süre dolmadan, varsayılan olarak **8 dakikada bir** kendisi yeniler: eski oturumu bırakır ve sonraki istekte yeniden giriş yapılır. Böylece kameraya başarısız bir istek gitmez. Tapo Control'de bu özellik yoktur.
-- Tapo kameralarda "çıkış yap" komutu yoktur; bırakılan oturumu kamera kendi süresi dolunca siler. Eski oturumla bir daha istek gönderilmez.
-- Son girişin üzerinden 8 dakika geçtikten sonraki **ilk istekte** olur. Yenileme istekleri sıraya koyan kilidin içinde yapılır; tam o sırada bir anahtara basılırsa komut yeni oturumla gider.
-- Kameralar yalnızca art arda **başarısız** girişlerde hesabı geçici olarak kilitler. 8 dakikada bir yapılan başarılı giriş sorun değildir.
+### Oturum
+- Kameralar oturumu girişten yaklaşık **10 dakika** sonra, trafik olsa da olmasa da kapatır. pytapo bunu kameranın `-40401` (oturum doldu) cevabından anlar, yeniden giriş yapar ve isteği bir kez tekrarlar. Anahtarlar "kullanılamıyor" olmaz. Tapo uygulaması ve Tapo Control de böyle çalışır.
+- Kameralar yalnızca art arda **başarısız** girişlerde hesabı geçici olarak kilitler. Oturum dolunca yapılan başarılı giriş sorun değildir.
 
 ### Sorgulama
 - Varsayılan 5 saniyede bir sorgulanır.
 - Her sorguda kameraya **tek bir istek** gider: alarm ayarı (`getAlertConfig`) ve bildirim ayarı (`getMsgPushConfig`) birlikte okunur.
 - Tapo Control her sorguda `getMost` ile yaklaşık 90 komut okur (varsayılan 30 saniyede bir). Bu entegrasyon o bilgileri kullanmadığı için okumaz; kameraya çok daha az yük biner.
-- Her kameranın kendi zamanlayıcısı ve kilidi vardır. Kameralar birbirini beklemez, bir kameraya aynı anda asla iki istek gitmez.
+- Her kameranın kendi zamanlayıcısı vardır, kameralar birbirini beklemez. pytapo bir kameraya istekleri sırayla gönderir.
 
 ### Anahtara basınca
 - Önce kameranın o anki ayarı okunur. Kamera zaten istenen durumdaysa (örneğin alarm açıkken "aç" komutu gelirse) kameraya **hiçbir şey yazılmaz**. Alarm yazmak nadiren kameranın servislerini yeniden başlattığı, okumak ise hiç başlatmadığı için gereksiz yazmalar önlenir. Okuma anlık yapıldığı için arada Tapo uygulamasından yapılan bir değişiklik gözden kaçmaz.
@@ -163,7 +159,6 @@ Her kameranın cihaz sayfasındaki **Tanılama** bölümünde iki sensör vardı
 - Her sorguda `getMost` yerine yalnızca alarm ve bildirim ayarı okunur (1 istek).
 - Alarm için her zaman `getAlertConfig` / `setAlertConfig` kullanılır ve yalnızca değişen alan yazılır. Tapo Control eski komutları önce dener ve `setAlertConfig`'te ayarın tamamını gönderir.
 - Yazmadan önce okunur, gerekmiyorsa yazılmaz. Yazmadan hemen sonra kamera okunmaz. Tapo Control her yazmadan sonra `getMost` ile yeniler.
-- Oturum süre dolmadan yenilenir (varsayılan 8 dakika).
 
 ### Tapo uygulamasıyla karşılaştırma
 Tapo uygulaması (Android 3.21.112) incelenerek karşılaştırıldı:
@@ -171,7 +166,7 @@ Tapo uygulaması (Android 3.21.112) incelenerek karşılaştırıldı:
 - **İstek biçimi:** Uygulama `setAlertConfig`'i de `multipleRequest` içinde gönderir, pytapo da öyle.
 - **Alarm yazma:** Uygulama yalnızca değişen alanı gönderir. Bu entegrasyon da öyle yapar.
 - **Yazmadan sonra:** Uygulama kamerayı hemen okumaz, bildiği durumu günceller. Bu entegrasyon da öyle yapar.
-- **Oturum:** Uygulama oturumu süreyle yenilemez; kamera `-40401` dediğinde yeniden giriş yapar. pytapo da bunu yapar; bu entegrasyon ek olarak oturumu 8 dakikada bir önceden yeniler.
+- **Oturum:** Uygulama oturumu süreyle yenilemez; kamera `-40401` dediğinde yeniden giriş yapar. pytapo da böyle yapar.
 - **Zaman aşımı:** Uygulama 30 saniye, pytapo 10 saniye bekler.
 
 ## Sorun giderme

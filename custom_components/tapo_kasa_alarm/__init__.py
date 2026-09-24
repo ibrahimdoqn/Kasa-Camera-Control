@@ -14,19 +14,10 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
-from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import format_mac
 
 from .api import AuthenticationError, CameraError, TapoAlarmApi, basic_info, connect
-from .const import (
-    CONF_CLOUD_PASSWORD,
-    CONF_IS_KLAP,
-    CONF_SCAN_INTERVAL,
-    CONF_SESSION_RENEW,
-    DEFAULT_SESSION_RENEW,
-    DOMAIN,
-    scan_interval,
-)
+from .const import CONF_CLOUD_PASSWORD, CONF_SCAN_INTERVAL, scan_interval
 from .coordinator import TapoAlarmCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -48,10 +39,10 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         data = {
             CONF_HOST: entry.data[CONF_HOST],
             CONF_CLOUD_PASSWORD: entry.data.get(CONF_PASSWORD, ""),
-            # The cameras 1.x supported all use the secure (non-KLAP) login.
-            CONF_IS_KLAP: False,
         }
-        options = {k: v for k, v in entry.options.items() if k != "discovery"}
+        options = {
+            k: v for k, v in entry.options.items() if k not in ("discovery", "session_renew")
+        }
         hass.config_entries.async_update_entry(
             entry, data=data, options=options, version=2
         )
@@ -71,19 +62,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: TapoAlarmConfigEntry) ->
             hass,
             host,
             entry.data[CONF_CLOUD_PASSWORD],
-            entry.data.get(CONF_IS_KLAP),
         )
     except AuthenticationError as err:
         raise ConfigEntryAuthFailed(str(err)) from err
     except CameraError as err:
         raise ConfigEntryNotReady(str(err)) from err
 
-    api = TapoAlarmApi(
-        hass,
-        controller,
-        host,
-        entry.options.get(CONF_SESSION_RENEW, DEFAULT_SESSION_RENEW),
-    )
+    api = TapoAlarmApi(hass, controller, host)
     mac = basic_info(controller).get("mac")
     if entry.unique_id and mac and (found := format_mac(mac)) != entry.unique_id:
         # The DHCP lease probably moved and another device now has this IP.
@@ -101,7 +86,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: TapoAlarmConfigEntry) ->
         raise
 
     entry.runtime_data = coordinator
-    _remove_old_entities(hass, entry)
     entry.async_on_unload(entry.add_update_listener(_async_options_updated))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
@@ -117,17 +101,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: TapoAlarmConfigEntry) -
 
 async def _async_options_updated(hass: HomeAssistant, entry: TapoAlarmConfigEntry) -> None:
     """Apply changed options without reconnecting."""
-    coordinator = entry.runtime_data
-    coordinator.update_interval = scan_interval(entry.options.get(CONF_SCAN_INTERVAL))
-    coordinator.api.session_renew_minutes = entry.options.get(
-        CONF_SESSION_RENEW, DEFAULT_SESSION_RENEW
+    entry.runtime_data.update_interval = scan_interval(
+        entry.options.get(CONF_SCAN_INTERVAL)
     )
 
-
-def _remove_old_entities(hass: HomeAssistant, entry: TapoAlarmConfigEntry) -> None:
-    """Drop entities that older versions created and are no longer provided."""
-    registry = er.async_get(hass)
-    uid = entry.unique_id or entry.entry_id
-    for platform, key in (("siren", "siren"), ("switch", "rich_notifications")):
-        if entity_id := registry.async_get_entity_id(platform, DOMAIN, f"{uid}_{key}"):
-            registry.async_remove(entity_id)

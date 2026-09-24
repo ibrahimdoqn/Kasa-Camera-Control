@@ -3,17 +3,15 @@
 pytapo is the library used by the Tapo Control integration, and the camera
 is connected the same way that integration does it with a cloud password:
 "admin" with the TP-Link cloud password. pytapo is
-blocking, so every call runs in the executor. Only a single session is kept
-open per camera and every request is serialized, so the camera never sees
-parallel logins.
+blocking, so every call runs in the executor. pytapo keeps one session per
+camera, sends the requests one at a time and logs in again when the camera
+ends the session.
 """
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Callable
 import logging
-import time
 from typing import Any
 
 from pytapo import Tapo
@@ -27,7 +25,7 @@ _LOGGER = logging.getLogger(__name__)
 _PYTAPO_LOGGER = logging.getLogger(f"{__name__}.pytapo")
 
 # pytapo raises plain exceptions; these messages mean the login was rejected.
-_AUTH_MESSAGES = ("Invalid authentication data", "Invalid authentication")
+_AUTH_MESSAGE = "Invalid authentication"
 
 
 class CameraError(Exception):
@@ -41,7 +39,7 @@ class AuthenticationError(CameraError):
 def _wrap(err: Exception) -> CameraError:
     if isinstance(err, CameraError):
         return err
-    if any(message in str(err) for message in _AUTH_MESSAGES):
+    if _AUTH_MESSAGE in str(err):
         return AuthenticationError(str(err))
     return CameraError(str(err) or type(err).__name__)
 
@@ -50,7 +48,6 @@ def connect(
     hass: HomeAssistant | None,
     host: str,
     cloud_password: str,
-    is_klap: bool | None = None,
 ) -> Tapo:
     """Log in to the camera the way Tapo Control does (blocking).
 
@@ -68,7 +65,6 @@ def connect(
             printDebugInformation=_PYTAPO_LOGGER.debug,
             printWarnInformation=_PYTAPO_LOGGER.warning,
             retryStok=False,
-            isKLAP=is_klap,
             hass=hass,
         )
     except Exception as err:  # noqa: BLE001 - pytapo raises plain exceptions
@@ -91,13 +87,10 @@ def alarm_modes(alarm: dict[str, Any]) -> list[str]:
     """
     modes = list(alarm.get("alarm_mode") or [])
     for mode, flag in ((MODE_SOUND, "sound_alarm_enabled"), (MODE_LIGHT, "light_alarm_enabled")):
-        if flag not in alarm:
-            continue
-        present = mode in modes or (mode == MODE_SOUND and "siren" in modes)
-        if alarm[flag] == "on" and not present:
+        if alarm.get(flag) == "on" and mode not in modes:
             modes.append(mode)
-        elif alarm[flag] == "off" and present:
-            modes = [m for m in modes if m != mode and not (mode == MODE_SOUND and m == "siren")]
+        elif alarm.get(flag) == "off" and mode in modes:
+            modes.remove(mode)
     return modes
 
 
@@ -171,51 +164,18 @@ PUSH_READ = {
 class TapoAlarmApi:
     """Alarm related calls on top of a connected pytapo controller."""
 
-    def __init__(
-        self,
-        hass: HomeAssistant,
-        controller: Tapo,
-        host: str,
-        session_renew_minutes: float = 0,
-    ) -> None:
+    def __init__(self, hass: HomeAssistant, controller: Tapo, host: str) -> None:
         self.hass = hass
         self.controller = controller
         self.host = host
         self.info = basic_info(controller)
-        self._lock = asyncio.Lock()
-        # The controller was just connected, so a fresh session exists.
-        self._session_started = time.monotonic()
-        self.session_renew_minutes = session_renew_minutes
 
     async def _run(self, func: Callable[..., Any], *args: Any) -> Any:
-        """Run one blocking pytapo call, one at a time per camera."""
-        async with self._lock:
-            await self._renew_session_if_due()
-            try:
-                return await self.hass.async_add_executor_job(func, *args)
-            except Exception as err:  # noqa: BLE001 - pytapo raises plain exceptions
-                raise _wrap(err) from err
-
-    async def _renew_session_if_due(self) -> None:
-        """Log in again before the camera ends the session.
-
-        Cameras end the session about 10 minutes after login. pytapo then
-        logs in again and repeats the request by itself; renewing first
-        avoids that failed request. Closing drops the old session (cameras
-        have no logout call; the camera expires it) and pytapo logs in again
-        on the next request.
-        """
-        if not self.session_renew_minutes:
-            return
-        now = time.monotonic()
-        if now - self._session_started < self.session_renew_minutes * 60:
-            return
-        _LOGGER.debug("Renewing the session with %s", self.host)
+        """Run one blocking pytapo call in the executor."""
         try:
-            await self.hass.async_add_executor_job(self.controller.close)
-        except Exception as err:  # noqa: BLE001 - the next request logs in anyway
-            _LOGGER.debug("Closing the session with %s failed: %s", self.host, err)
-        self._session_started = now
+            return await self.hass.async_add_executor_job(func, *args)
+        except Exception as err:  # noqa: BLE001 - pytapo raises plain exceptions
+            raise _wrap(err) from err
 
     async def get_state(self) -> dict[str, Any]:
         """Read the alarm and notification config in one multipleRequest."""
@@ -253,9 +213,7 @@ class TapoAlarmApi:
         if sound is not None or light is not None:
             old_modes = alarm_modes(current)
             modes = list(old_modes)
-            # Some firmwares call the sound mode "siren".
-            sound_mode = "siren" if "siren" in modes else MODE_SOUND
-            for mode, value in ((sound_mode, sound), (MODE_LIGHT, light)):
+            for mode, value in ((MODE_SOUND, sound), (MODE_LIGHT, light)):
                 if value is True and mode not in modes:
                     modes.append(mode)
                 elif value is False and mode in modes:

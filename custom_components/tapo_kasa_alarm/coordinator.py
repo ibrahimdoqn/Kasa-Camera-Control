@@ -10,7 +10,6 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
-from homeassistant.helpers.debounce import Debouncer
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
@@ -18,16 +17,9 @@ from .api import (
     AuthenticationError,
     CameraError,
     TapoAlarmApi,
-    alarm_modes,
     disconnect_reason,
 )
-from .const import (
-    CONF_SCAN_INTERVAL,
-    MODE_LIGHT,
-    MODE_SOUND,
-    REQUEST_REFRESH_DELAY,
-    scan_interval,
-)
+from .const import CONF_SCAN_INTERVAL, MODE_LIGHT, MODE_SOUND, scan_interval
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -50,11 +42,6 @@ class TapoAlarmCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             config_entry=entry,
             name=api.host,
             update_interval=scan_interval(entry.options.get(CONF_SCAN_INTERVAL)),
-            # We don't want an immediate refresh since the device
-            # takes a moment to reflect the state change
-            request_refresh_debouncer=Debouncer(
-                hass, _LOGGER, cooldown=REQUEST_REFRESH_DELAY, immediate=False
-            ),
         )
         self.api = api
         # Connection diagnostics (shown by the diagnostic sensors).
@@ -102,24 +89,15 @@ class TapoAlarmCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.down_since = None
         self.connected_since = now
 
-    async def async_command(
-        self,
-        func: Callable[[], Awaitable[Any]],
-        name: str,
-        *,
-        refresh: bool = True,
-    ) -> Any:
-        """Run a command, map errors and optionally refresh after."""
+    async def async_command(self, func: Callable[[], Awaitable[Any]], name: str) -> Any:
+        """Run a command and map its errors."""
         try:
-            result = await func()
+            return await func()
         except AuthenticationError as err:
             self.config_entry.async_start_reauth(self.hass)
             raise HomeAssistantError(f"Authentication failed on {name}: {err}") from err
         except (CameraError, ValueError) as err:
             raise HomeAssistantError(f"Error on {name}: {err}") from err
-        if refresh:
-            await self.async_request_refresh()
-        return result
 
     async def _read_then_write(
         self, write: Callable[[dict[str, Any]], Awaitable[dict[str, Any]]], name: str
@@ -138,7 +116,7 @@ class TapoAlarmCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             fresh.update(await self.api.get_state())
             return await write(fresh)
 
-        sent = await self.async_command(_run, name, refresh=False)
+        sent = await self.async_command(_run, name)
         self._connection_ok()
         self.data = {**self.data, **fresh}
         return sent
@@ -157,14 +135,12 @@ class TapoAlarmCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         alarm = {**self.data["alarm"], **sent}
         if "alarm_mode" in sent:
-            modes = alarm_modes({"alarm_mode": sent["alarm_mode"]})
             for flag, mode in (
                 ("sound_alarm_enabled", MODE_SOUND),
                 ("light_alarm_enabled", MODE_LIGHT),
             ):
                 if flag in alarm:
-                    present = mode in modes or (mode == MODE_SOUND and "siren" in modes)
-                    alarm[flag] = "on" if present else "off"
+                    alarm[flag] = "on" if mode in sent["alarm_mode"] else "off"
         self.async_set_updated_data({**self.data, "alarm": alarm})
 
     async def async_set_notifications(self, enabled: bool) -> None:
@@ -179,4 +155,4 @@ class TapoAlarmCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def async_reboot(self) -> None:
         """Reboot the camera. It is unreachable for a while, so no refresh."""
-        await self.async_command(self.api.reboot, "reboot", refresh=False)
+        await self.async_command(self.api.reboot, "reboot")

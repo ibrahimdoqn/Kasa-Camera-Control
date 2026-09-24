@@ -9,20 +9,10 @@ DOMAIN = "tapo_kasa_alarm"
 # Login like Tapo Control with a cloud password: "admin" and the TP-Link
 # cloud password.
 CONF_CLOUD_PASSWORD = "cloud_password"
-CONF_IS_KLAP = "is_klap"
 
 CONF_SCAN_INTERVAL = "scan_interval"
 DEFAULT_SCAN_INTERVAL = 5
 MIN_SCAN_INTERVAL = 5
-
-# The cameras end the session about 10 minutes after login. Log in again
-# before that (0 turns it off).
-CONF_SESSION_RENEW = "session_renew"
-DEFAULT_SESSION_RENEW = 8  # minutes
-MAX_SESSION_RENEW = 60
-
-# Delay before a requested refresh.
-REQUEST_REFRESH_DELAY = 0.35
 
 ALARM_SECTION = "chn1_msg_alarm_info"
 PUSH_SECTION = "chn1_msg_push_info"

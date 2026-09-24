@@ -13,19 +13,12 @@ import requests
 
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 
 from custom_components.tapo_kasa_alarm.const import DOMAIN
 
-DATA = {"host": "192.168.1.50", "cloud_password": "cloudpw", "is_klap": False}
+DATA = {"host": "192.168.1.50", "cloud_password": "cloudpw"}
 CONNECT = "custom_components.tapo_kasa_alarm.connect"
-
-
-async def refresh_after_command(hass: HomeAssistant) -> None:
-    """Let any pending refresh run."""
-    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=1))
-    await hass.async_block_till_done()
 
 
 async def _press(hass: HomeAssistant, service: str, entity_id: str) -> None:
@@ -145,19 +138,10 @@ async def test_setup_and_toggle(hass: HomeAssistant) -> None:
         domain=DOMAIN, version=2, data=DATA, unique_id="aa:bb:cc:dd:ee:ff"
     )
     entry.add_to_hass(hass)
-    registry = er.async_get(hass)
-    old_siren = registry.async_get_or_create(
-        "siren", DOMAIN, "aa:bb:cc:dd:ee:ff_siren", config_entry=entry
-    )
-    old_rich = registry.async_get_or_create(
-        "switch", DOMAIN, "aa:bb:cc:dd:ee:ff_rich_notifications", config_entry=entry
-    )
     with patch(CONNECT, return_value=cam):
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
     assert entry.state is ConfigEntryState.LOADED
-    assert registry.async_get(old_siren.entity_id) is None
-    assert registry.async_get(old_rich.entity_id) is None
 
     assert hass.states.get("switch.bahce_alarm").state == "off"
     assert hass.states.get("switch.bahce_alarm_sound").state == "on"
@@ -171,7 +155,8 @@ async def test_setup_and_toggle(hass: HomeAssistant) -> None:
     # written state is shown at once and the camera is not read again
     # right after the write.
     assert hass.states.get("switch.bahce_alarm").state == "on"
-    await refresh_after_command(hass)
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=1))
+    await hass.async_block_till_done()
     assert cam.methods() == ["multipleRequest", "setAlertConfig"]
 
     # Already on: the camera is read, nothing is written.
@@ -247,12 +232,11 @@ def test_login_like_tapo_control() -> None:
     from custom_components.tapo_kasa_alarm.api import connect
 
     with patch("custom_components.tapo_kasa_alarm.api.Tapo") as tapo:
-        connect(None, "1.2.3.4", "cloudpw", False)
+        connect(None, "1.2.3.4", "cloudpw")
         args, kwargs = tapo.call_args
         assert args == ("1.2.3.4", "admin", "cloudpw", "cloudpw")
         assert kwargs["reuseSession"] is False
         assert kwargs["retryStok"] is False
-        assert kwargs["isKLAP"] is False
 
 
 def test_login_errors() -> None:
@@ -292,7 +276,7 @@ async def test_config_flow(hass: HomeAssistant) -> None:
     assert result["title"] == "Bahce"
     assert result["result"].unique_id == "aa:bb:cc:dd:ee:ff"
     assert result["result"].version == 2
-    assert result["result"].data == {**user_input, "is_klap": False}
+    assert result["result"].data == user_input
     assert connect.call_args.args[1:] == ("192.168.1.50", "cloudpw")
 
 
@@ -334,8 +318,8 @@ async def test_migrate_from_kasa(hass: HomeAssistant) -> None:
     assert entry.state is ConfigEntryState.LOADED
     assert entry.version == 2
     assert entry.data == DATA
-    assert entry.options == {"scan_interval": 10, "session_renew": 8}
-    assert connect.call_args.args[1:] == ("192.168.1.50", "cloudpw", False)
+    assert entry.options == {"scan_interval": 10}
+    assert connect.call_args.args[1:] == ("192.168.1.50", "cloudpw")
     # Entity IDs stay the same.
     assert hass.states.get("switch.bahce_alarm") is not None
 
@@ -346,7 +330,7 @@ async def test_camera_account_entry_asks_for_cloud_password(hass: HomeAssistant)
         domain=DOMAIN,
         version=2,
         data={"host": "192.168.1.50", "username": "cam", "password": "campw",
-              "cloud_password": "", "is_klap": False},
+              "cloud_password": ""},
         unique_id="aa:bb:cc:dd:ee:ff",
     )
     entry.add_to_hass(hass)
@@ -381,7 +365,7 @@ async def test_reconfigure(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
     assert result["reason"] == "reconfigure_successful"
-    assert entry.data == {"host": "192.168.1.51", "cloud_password": "new", "is_klap": False}
+    assert entry.data == {"host": "192.168.1.51", "cloud_password": "new"}
 
     # Another camera at the new IP is not saved.
     result = await entry.start_reconfigure_flow(hass)
@@ -402,7 +386,6 @@ async def test_only_the_alert_config_calls_are_used(hass: HomeAssistant) -> None
     await _setup(hass, cam)
     await _press(hass, "turn_on", "switch.bahce_alarm")
     await _press(hass, "turn_off", "switch.bahce_alarm_sound")
-    await refresh_after_command(hass)
     methods = set(cam.methods())
     for method, params in cam.calls:
         if method == "multipleRequest":
@@ -436,7 +419,6 @@ def test_alarm_modes_follow_enabled_flags() -> None:
     assert alarm_modes(
         {"alarm_mode": ["light"], "sound_alarm_enabled": "on", "light_alarm_enabled": "on"}
     ) == ["light", "sound"]
-    assert alarm_modes({"alarm_mode": ["siren"], "sound_alarm_enabled": "off"}) == []
 
 
 async def test_authentication_error_starts_reauth(hass: HomeAssistant) -> None:
@@ -472,48 +454,12 @@ async def test_options_flow(hass: HomeAssistant) -> None:
     entry, _ = await _setup(hass, FakeTapo())
     result = await hass.config_entries.options.async_init(entry.entry_id)
     result = await hass.config_entries.options.async_configure(
-        result["flow_id"], {"scan_interval": 30, "session_renew": 5}
+        result["flow_id"], {"scan_interval": 30}
     )
     await hass.async_block_till_done()
-    assert entry.options == {"scan_interval": 30, "session_renew": 5}
+    assert entry.options == {"scan_interval": 30}
     assert entry.runtime_data.update_interval == timedelta(seconds=30)
-    assert entry.runtime_data.api.session_renew_minutes == 5
-    assert isinstance(entry.options["session_renew"], int)
     assert entry.state is ConfigEntryState.LOADED
-
-
-async def test_session_renewed_before_camera_ends_it(hass: HomeAssistant) -> None:
-    """The session is dropped every N minutes so pytapo logs in again."""
-    from custom_components.tapo_kasa_alarm.api import TapoAlarmApi
-
-    cam = FakeTapo()
-    clock = {"now": 1000.0}
-    with patch(
-        "custom_components.tapo_kasa_alarm.api.time.monotonic",
-        side_effect=lambda: clock["now"],
-    ):
-        api = TapoAlarmApi(hass, cam, "1.2.3.4", session_renew_minutes=8)
-        clock["now"] += 7 * 60
-        await api.get_state()
-        assert cam.closed == 0
-
-        clock["now"] += 60  # 8 minutes after login
-        await api.get_state()
-        assert cam.closed == 1
-
-        clock["now"] += 60  # new session is only 1 minute old
-        await api.get_state()
-        assert cam.closed == 1
-
-        api.session_renew_minutes = 0  # turned off
-        clock["now"] += 60 * 60
-        await api.get_state()
-        assert cam.closed == 1
-
-
-async def test_default_session_renew(hass: HomeAssistant) -> None:
-    entry, _ = await _setup(hass, FakeTapo())
-    assert entry.runtime_data.api.session_renew_minutes == 8
 
 
 # --- Connection diagnostics ------------------------------------------------

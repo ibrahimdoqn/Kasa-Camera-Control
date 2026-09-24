@@ -65,11 +65,7 @@ class AlarmModeSwitch(TapoAlarmEntity, SwitchEntity):
 
     @property
     def is_on(self) -> bool:
-        modes = alarm_modes(self.coordinator.data["alarm"])
-        # Some firmwares call the sound mode "siren".
-        if self._mode == MODE_SOUND:
-            return MODE_SOUND in modes or "siren" in modes
-        return self._mode in modes
+        return self._mode in alarm_modes(self.coordinator.data["alarm"])
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         await self.coordinator.async_set_alarm(**{self._mode: True})
