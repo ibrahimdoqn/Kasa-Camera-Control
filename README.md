@@ -186,7 +186,7 @@ Tapo uygulaması (Android 3.21.112) incelenerek karşılaştırıldı:
 - **Giriş ve şifreleme:** Uygulama da python-kasa ile aynı yöntemi kullanır: `cnonce`/`nonce` ile giriş, `stok` belirteci, AES şifreli `securePassthrough`, her istekte artan `seq` ve `tapo_tag` başlıkları. Fark yok.
 - **İstek biçimi:** Uygulama `setAlertConfig`'i de `multipleRequest` içinde gönderir, python-kasa da öyle. Fark yok.
 - **Alarm yazma:** Uygulama yalnızca değişen alanı gönderir. 1.6.6'dan beri bu entegrasyon da öyle yapar.
-- **Yazmadan sonra:** Uygulama kamerayı hemen okumaz, bildiği durumu günceller. Bu entegrasyon da artık öyle yapar (1.6.6'ya kadar 0,35 saniye sonra okuyordu).
+- **Yazmadan sonra:** Uygulama kamerayı hemen okumaz, bildiği durumu günceller. 1.6.7'den beri bu entegrasyon da öyle yapar (önceden 0,35 saniye sonra okuyordu).
 - **Oturum:** Uygulama oturumu süre ile yenilemez; kamera `-40401` (oturum doldu) dediğinde yeniden giriş yapar. Bu entegrasyon bunu da yapar, ek olarak oturumu 8 dakikada bir önceden yeniler.
 - **Zaman aşımı:** Uygulama 30 saniye bekler. Bu entegrasyon TP-Link gibi 5 saniye bekler.
 
