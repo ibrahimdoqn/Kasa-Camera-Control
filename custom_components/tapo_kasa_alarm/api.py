@@ -82,18 +82,14 @@ def basic_info(controller: Tapo) -> dict[str, Any]:
 
 
 def alarm_modes(alarm: dict[str, Any]) -> list[str]:
-    """Sound/light modes of the alarm config.
+    """Sound/light modes of the automatic alarm.
 
-    getAlertConfig reports both alarm_mode and sound/light_alarm_enabled;
-    the enabled flags win when present.
+    Only alarm_mode, like the Tapo app. getAlertConfig also reports
+    sound_alarm_enabled / light_alarm_enabled, but those belong to the
+    manual alarm (the app reads them only for it) and the camera does not
+    change them when alarm_mode changes.
     """
-    modes = list(alarm.get("alarm_mode") or [])
-    for mode, flag in ((MODE_SOUND, "sound_alarm_enabled"), (MODE_LIGHT, "light_alarm_enabled")):
-        if alarm.get(flag) == "on" and mode not in modes:
-            modes.append(mode)
-        elif alarm.get(flag) == "off" and mode in modes:
-            modes.remove(mode)
-    return modes
+    return list(alarm.get("alarm_mode") or [])
 
 
 def disconnect_reason(err: BaseException) -> str:

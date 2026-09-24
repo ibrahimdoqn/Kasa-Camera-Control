@@ -19,14 +19,7 @@ from .api import (
     TapoAlarmApi,
     disconnect_reason,
 )
-from .const import (
-    AUTH_RETRIES,
-    CONF_SCAN_INTERVAL,
-    DOMAIN,
-    MODE_LIGHT,
-    MODE_SOUND,
-    scan_interval,
-)
+from .const import AUTH_RETRIES, CONF_SCAN_INTERVAL, DOMAIN, scan_interval
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -163,15 +156,9 @@ class TapoAlarmCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         sent = await self._read_then_write(
             lambda state: self.api.set_alarm(state["alarm"], **changes), "set alarm"
         )
-        alarm = {**self.data["alarm"], **sent}
-        if "alarm_mode" in sent:
-            for flag, mode in (
-                ("sound_alarm_enabled", MODE_SOUND),
-                ("light_alarm_enabled", MODE_LIGHT),
-            ):
-                if flag in alarm:
-                    alarm[flag] = "on" if mode in sent["alarm_mode"] else "off"
-        self.async_set_updated_data({**self.data, "alarm": alarm})
+        self.async_set_updated_data(
+            {**self.data, "alarm": {**self.data["alarm"], **sent}}
+        )
 
     async def async_set_notifications(self, enabled: bool) -> None:
         """Write the notification setting, like async_set_alarm."""

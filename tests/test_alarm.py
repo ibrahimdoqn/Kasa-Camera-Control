@@ -91,12 +91,10 @@ class FakeTapo:
         if method == "setAlertConfig":
             sent = params["msg_alarm"]["chn1_msg_alarm_info"]
             self.writes.append(sent)
-            # The camera merges the sent fields into its config.
+            # The camera merges the sent fields into its config. Like the
+            # real cameras, sound/light_alarm_enabled (the manual alarm's
+            # settings) do not follow alarm_mode.
             self.alarm.update(sent)
-            if "alarm_mode" in sent:
-                modes = self.alarm["alarm_mode"]
-                self.alarm["sound_alarm_enabled"] = "on" if "sound" in modes else "off"
-                self.alarm["light_alarm_enabled"] = "on" if "light" in modes else "off"
             return {}
         raise AssertionError(method)
 
@@ -403,16 +401,18 @@ async def test_camera_without_alert_config_fails_clearly(hass: HomeAssistant) ->
     assert "getAlertConfig" in (entry.reason or "")
 
 
-def test_alarm_modes_follow_enabled_flags() -> None:
-    from custom_components.tapo_kasa_alarm.api import alarm_modes
-
-    assert alarm_modes({"alarm_mode": ["sound", "light"]}) == ["sound", "light"]
-    assert alarm_modes(
-        {"alarm_mode": ["sound", "light"], "sound_alarm_enabled": "off"}
-    ) == ["light"]
-    assert alarm_modes(
-        {"alarm_mode": ["light"], "sound_alarm_enabled": "on", "light_alarm_enabled": "on"}
-    ) == ["light", "sound"]
+async def test_sound_off_stays_off(hass: HomeAssistant) -> None:
+    """Only alarm_mode decides sound/light; the manual alarm's flags do not."""
+    cam = FakeTapo()
+    entry, _ = await _setup(hass, cam)
+    await _press(hass, "turn_off", "switch.bahce_alarm_sound")
+    assert cam.writes[-1] == {"alarm_mode": ["light"]}
+    # The camera keeps sound_alarm_enabled "on" (it is the manual alarm's).
+    assert cam.alarm["sound_alarm_enabled"] == "on"
+    await entry.runtime_data.async_refresh()
+    await hass.async_block_till_done()
+    assert hass.states.get("switch.bahce_alarm_sound").state == "off"
+    assert hass.states.get("switch.bahce_alarm_light").state == "on"
 
 
 async def test_rejected_login_on_setup_is_tried_again(hass: HomeAssistant) -> None:

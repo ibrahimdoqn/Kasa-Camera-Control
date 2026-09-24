@@ -118,7 +118,7 @@ Kameraya Tapo Control'ün `registerController`'ındaki ayarlarla bağlanılır:
 ### Alarm ayarını okuma ve yazma
 - Alarm ayarı yalnızca `getAlertConfig` ile okunur ve `setAlertConfig` ile yazılır. Bu, kameranın güncel alarm komutudur; Tapo uygulaması da bu kameralarda bunu kullanır.
 - Yazarken Tapo uygulaması gibi **yalnızca değişen alan** gönderilir: alarm açıp kapatınca sadece `{"enabled": "on"/"off"}`, ses/ışık değişince sadece `{"alarm_mode": [...]}`. Ses seviyesi, süre, ışık türü gibi diğer ayarlar yeniden yazılmaz.
-- Ses ve ışık anahtarları, kamera bildiriyorsa `sound_alarm_enabled` / `light_alarm_enabled` alanlarını okur.
+- Ses ve ışık anahtarları, Tapo uygulaması gibi yalnızca `alarm_mode` alanını okur. `getAlertConfig`'in döndürdüğü `sound_alarm_enabled` / `light_alarm_enabled` alanları **manuel alarmın** (kameradan elle çalınan alarm) ayarlarıdır; Tapo uygulaması onları yalnızca manuel alarm için kullanır ve kamera bunları `alarm_mode` değişince güncellemez. Bu entegrasyon onlara dokunmaz.
 - **Kullanılmayan eski komutlar:** `getLastAlarmInfo` + ham `set` ve `getAlarmConfig` / `setAlarmConfig`. Tapo Control bunları `getAlertConfig`'ten önce dener. pytapo'nun eski `setAlarm` komutu ayrıca her seferinde alarm sesi ve ışık türünü `"0"` yapar.
 - `getAlertConfig`'i desteklemeyen bir kamera yüklenmez. Log'a "does not answer getAlertConfig" hatası yazılır ve Home Assistant kurulumu tekrar tekrar dener.
 
