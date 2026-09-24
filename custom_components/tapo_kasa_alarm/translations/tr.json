@@ -52,12 +52,14 @@
     "step": {
       "init": {
         "title": "Kamera seçenekleri",
-        "description": "Kameranın ne sıklıkla sorgulanacağını ayarlayın. Değişiklik kameraya yeniden bağlanmadan hemen uygulanır.",
+        "description": "Kameranın ne sıklıkla sorgulanacağını ve bağlantısının ne sıklıkla kontrol edileceğini ayarlayın. Değişiklik kameraya yeniden bağlanmadan hemen uygulanır.",
         "data": {
-          "scan_interval": "Sorgulama aralığı (saniye)"
+          "scan_interval": "Sorgulama aralığı (saniye)",
+          "port_check_interval": "Bağlantı kontrol aralığı (saniye)"
         },
         "data_description": {
-          "scan_interval": "Alarm ve bildirim ayarlarının kaç saniyede bir okunacağı. Varsayılan 5, en az 5. Değeri büyütmek kameraya daha az yük bindirir; Tapo uygulamasından yapılan değişiklikler Home Assistant'ta daha geç görünür."
+          "scan_interval": "Alarm ve bildirim ayarlarının kaç saniyede bir okunacağı. Varsayılan 5, en az 5. Değeri büyütmek kameraya daha az yük bindirir; Tapo uygulamasından yapılan değişiklikler Home Assistant'ta daha geç görünür.",
+          "port_check_interval": "Kameranın 443 portunun kaç saniyede bir kontrol edileceği (Tanılama'daki Bağlantı ve Uptime için). Varsayılan 1, en az 1, en fazla 60. Kontrol yalnızca bağlanıp kapatır; giriş yapmaz, kameranın ayarlarına dokunmaz."
         }
       }
     }
@@ -80,6 +82,34 @@
     "button": {
       "reboot": {
         "name": "Yeniden başlat"
+      }
+    },
+    "binary_sensor": {
+      "connection": {
+        "name": "Bağlantı",
+        "state_attributes": {
+          "last_disconnect": {
+            "name": "Son kopma"
+          },
+          "last_disconnect_reason": {
+            "name": "Son kopma sebebi",
+            "state": {
+              "restarting": "Kamera ağda, servisleri yeniden başlıyor (bağlantı reddedildi)",
+              "unreachable": "Kamera ağda değil (cevap yok)"
+            }
+          },
+          "last_outage_seconds": {
+            "name": "Son kesinti süresi (sn)"
+          },
+          "down_since": {
+            "name": "Kesinti başlangıcı"
+          }
+        }
+      }
+    },
+    "sensor": {
+      "uptime": {
+        "name": "Uptime"
       }
     }
   }

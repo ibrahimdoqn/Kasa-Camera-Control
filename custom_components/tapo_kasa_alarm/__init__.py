@@ -26,10 +26,11 @@ from .const import (
     scan_interval,
 )
 from .coordinator import TapoAlarmCoordinator, auth_failed, auth_ok
+from .port_check import PortCheckCoordinator, port_check_interval
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS = [Platform.BUTTON, Platform.SWITCH]
+PLATFORMS = [Platform.BINARY_SENSOR, Platform.BUTTON, Platform.SENSOR, Platform.SWITCH]
 
 type TapoAlarmConfigEntry = ConfigEntry[TapoAlarmCoordinator]
 
@@ -82,6 +83,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: TapoAlarmConfigEntry) ->
         await api.close()
         raise
 
+    coordinator.port_check = PortCheckCoordinator(hass, entry, host)
+    await coordinator.port_check.async_refresh()
+
     entry.runtime_data = coordinator
     _remove_connection_sensors(hass, entry)
     entry.async_on_unload(entry.add_update_listener(_async_options_updated))
@@ -99,13 +103,14 @@ async def async_unload_entry(hass: HomeAssistant, entry: TapoAlarmConfigEntry) -
 
 async def _async_options_updated(hass: HomeAssistant, entry: TapoAlarmConfigEntry) -> None:
     """Apply changed options without reconnecting."""
-    entry.runtime_data.update_interval = scan_interval(
-        entry.options.get(CONF_SCAN_INTERVAL)
-    )
+    coordinator = entry.runtime_data
+    coordinator.update_interval = scan_interval(entry.options.get(CONF_SCAN_INTERVAL))
+    if coordinator.port_check is not None:
+        coordinator.port_check.update_interval = port_check_interval(entry.options)
 
 
 def _remove_connection_sensors(hass: HomeAssistant, entry: TapoAlarmConfigEntry) -> None:
-    """Drop the connection sensors earlier versions created."""
+    """Drop connection sensors earlier versions created and no longer provided."""
     registry = er.async_get(hass)
     for key in ("connected_since", "disconnects"):
         unique_id = f"{entry.unique_id or entry.entry_id}_{key}"
