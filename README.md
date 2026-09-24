@@ -32,9 +32,7 @@ Tamamen **yerel** çalışır: kameralarla ev ağı içinden konuşur, TP-Link b
 2. Depo: `https://github.com/ibrahimdoqn/Kasa-Camera-Control`, kategori: **Integration**
 3. **Kasa Camera Control** kurun ve Home Assistant'ı yeniden başlatın.
 4. Ayarlar → Cihazlar ve Hizmetler → **Entegrasyon ekle** → *Kasa Camera Control*
-5. Kameranın IP adresini ve giriş bilgisini girin. Tapo Control'deki gibi iki yol var:
-   - **Kamera hesabı:** Tapo uygulaması → kamera → Ayarlar → Gelişmiş ayarlar → **Kamera hesabı**'nda oluşturduğunuz kullanıcı adı ve şifre (RTSP için kullanılan hesap).
-   - **TP-Link bulut şifresi:** Kamera hesabı alanlarını boş bırakıp Tapo uygulamasına girdiğiniz hesabın şifresini yazın. Kameraya o zaman `admin` olarak girilir. Bulut şifresi girilirse kamera hesabı yerine o kullanılır.
+5. Kameranın IP adresini ve **TP-Link bulut şifresini** (Tapo uygulamasına girdiğiniz hesabın şifresi) girin. Kameraya bu şifreyle yerel olarak `admin` kullanıcısıyla girilir; Tapo Control'ün bulut şifresiyle girdiği gibi.
 6. Her kamera için 4. ve 5. adımları tekrarlayın.
 
 > Kameralara sabit IP (DHCP rezervasyonu) verin. 2.0.0'da MAC ile IP arama yok; IP değişirse kameranın **Yeniden yapılandır** menüsünden yeni IP'yi girin.
@@ -50,7 +48,7 @@ Kameraları yeniden eklemeniz gerekmez. Artık kullanılmayan varlıklar (eski S
 ### 1.x'ten 2.0.0'a geçiş
 - Kurulumlar **yerinde** güncellenir. Varlık kimlikleri değişmez, otomasyonlar bozulmaz.
 - 1.x TP-Link hesabının e-posta ve şifresini kullanıyordu. python-kasa kameraya bu şifreyle `admin` olarak giriyordu. 2.0.0 bu şifreyi **TP-Link bulut şifresi** olarak taşır, yani Tapo Control'ün bulut şifresiyle girdiği gibi girer. Yeni bilgi girmeden çalışmaya devam eder.
-- Kamera hesabına geçmek isterseniz: Ayarlar → Cihazlar ve Hizmetler → **Kasa Camera Control** → kamera → ⋮ → **Yeniden yapılandır**. Kamera hesabı bilgilerini girip bulut şifresi alanını boş bırakın.
+- 2.0.0'da kamera hesabıyla da giriş yapılabiliyordu; artık yalnızca bulut şifresi kullanılır. Kamera hesabıyla eklenmiş bir kamera varsa Home Assistant bulut şifresini ister.
 - **MAC ile IP arama** seçeneği kaldırıldı (pytapo'da yok).
 - Geri dönmek isterseniz HACS'tan 1.6.8'i yükleyin. 2.0.0'ın güncellediği kayıtları 1.x okuyamaz; o durumda kameraları silip yeniden ekleyin.
 
@@ -60,7 +58,7 @@ Ayarlar → Cihazlar ve Hizmetler → **Kasa Camera Control** → kamera → **Y
 - **Sorgulama aralığı (saniye):** Varsayılan 5, en az 5. Değişiklik kameraya yeniden bağlanmadan uygulanır.
 - **Oturumu yenileme aralığı (dakika):** Varsayılan 8, en fazla 60, 0 kapatır. Kameralar oturumu girişten yaklaşık 10 dakika sonra kapatır; entegrasyon bundan önce yeniden giriş yapar. Ayrıntılar için [Oturum yenileme](#oturum-yenileme) bölümüne bakın.
 
-IP adresini veya giriş bilgisini değiştirmek için **Yeniden yapılandır** menüsünü kullanın. Yeni IP'de başka bir kamera cevap verirse değişiklik kaydedilmez.
+IP adresini veya bulut şifresini değiştirmek için **Yeniden yapılandır** menüsünü kullanın. Yeni IP'de başka bir kamera cevap verirse değişiklik kaydedilmez.
 
 ## Yerel çalışma
 Entegrasyon kameralarla doğrudan ev ağınızın içinde konuşur ve TP-Link bulutuna hiçbir istek göndermez (`local_polling`).
@@ -68,10 +66,10 @@ Entegrasyon kameralarla doğrudan ev ağınızın içinde konuşur ve TP-Link bu
 - **Kamera bağlantısı:** Home Assistant kameraya doğrudan IP adresinden, ev ağı içinde HTTPS ile bağlanır.
 - **Alarm, bildirim ve yeniden başlatma:** Hepsi bu yerel bağlantı üzerinden gider.
 
-**Bulut şifresi neden kullanılabiliyor?** Tapo kameralar yerel girişte `admin` kullanıcısı için TP-Link hesabının şifresini kabul eder. Kamera, Tapo uygulamasıyla kurulurken bu şifrenin şifrelenmiş bir kopyasını kendi içinde saklar. Entegrasyon girişi kameranın kendisine yapar, TP-Link sunucularına değil. Kamera hesabı ise tamamen kameranın içindedir.
+**Bulut şifresi neden kullanılabiliyor?** Tapo kameralar yerel girişte `admin` kullanıcısı için TP-Link hesabının şifresini kabul eder. Kamera, Tapo uygulamasıyla kurulurken bu şifrenin şifrelenmiş bir kopyasını kendi içinde saklar. Entegrasyon girişi kameranın kendisine yapar, TP-Link sunucularına değil.
 
 **İnternet kesilirse:** Alarm ve bildirim anahtarları çalışmaya devam eder.
-- İstisna: Bulut şifresiyle giriş yapıyorsanız ve TP-Link hesabınızın şifresini değiştirirseniz, kamera yeni şifreyi internet üzerinden öğrenir. Sonra Home Assistant sizden yeni şifreyi ister.
+- İstisna: TP-Link hesabınızın şifresini değiştirirseniz, kamera yeni şifreyi internet üzerinden öğrenir. Sonra Home Assistant sizden yeni şifreyi ister.
 
 **Bulutla ilişkili tek şey:** Bildirimler anahtarı kameranın bildirim gönderip göndermeyeceğini yerel olarak ayarlar. Bildirimlerin telefona ulaşması ise Tapo'nun kendi bulutu üzerinden olur; bu, Tapo uygulamasının kendi işleyişidir.
 
@@ -96,7 +94,7 @@ automation:
 ### Bağlantı
 Kameraya Tapo Control'ün `registerController`'ındaki ayarlarla bağlanılır:
 - **pytapo 3.4.19:** Tapo Control'ün kullandığı sürüm. pytapo bloklayan bir kütüphane olduğu için her çağrı Home Assistant'ın arka plan iş parçacıklarında çalışır; Home Assistant'ın ana döngüsünü bekletmez.
-- **Giriş:** Bulut şifresi varsa `admin` + bulut şifresi, yoksa kamera hesabı. Tapo Control'le aynı.
+- **Giriş:** `admin` + TP-Link bulut şifresi. Tapo Control'e bulut şifresi girildiğinde de böyle girer.
 - **Her istek yeni HTTPS bağlantısıyla** gider (`reuseSession=False`), Tapo Control'deki gibi. Kamera oturumu (`stok`) ise korunur, her istekte yeniden giriş yapılmaz.
 - **KLAP:** Kamera eklenirken kameranın giriş türü (KLAP mı değil mi) bulunur ve kaydedilir. Sonraki açılışlarda yeniden aranmaz.
 - **MAC kontrolü:** Bağlanılan cihazın MAC adresi kayıtlı kamerayla karşılaştırılır. O IP'de başka bir cihaz varsa kullanılmaz, kameralar karışmaz.
@@ -178,7 +176,7 @@ Tapo uygulaması (Android 3.21.112) incelenerek karşılaştırıldı:
 
 ## Sorun giderme
 - **Anahtarlar sık sık "kullanılamıyor" oluyor:** Log'da `Connection refused`, `Max retries exceeded` veya `timed out` varsa kamera o anda ağda değildir veya servislerini yeniden başlatıyordur. Home Assistant'ın **Ping** entegrasyonuyla kameranın IP'si için bir sensör ekleyin; ping de düşüyorsa sorun Wi-Fi'da veya kameradadır. Tapo uygulamasından kameranın sinyal gücüne bakın.
-- **Giriş hatası:** Kamera hesabı kullanıcı adı ve şifresini Tapo uygulamasındaki **Kamera hesabı** ekranından kontrol edin. Bulut şifresiyle giriyorsanız Tapo uygulamasının şifresini kullanın. Art arda yanlış denemeden sonra kamera girişi bir süre kilitler; birkaç dakika bekleyin.
+- **Giriş hatası:** Tapo uygulamasına girdiğiniz TP-Link hesabının şifresini kullandığınızı kontrol edin. Art arda yanlış denemeden sonra kamera girişi bir süre kilitler; birkaç dakika bekleyin.
 - **Otomasyon "kullanılamıyor"dan dönünce tetikleniyor:** Kamera ağdan düştüğünde anahtarlar "kullanılamıyor" olur. Anahtar "kullanılamıyor"dan tekrar "açık"a döndüğünde durum değişikliğine bağlı bir otomasyon tetiklenebilir. Tetikleyiciye `not_from: unavailable` ekleyin:
   ```yaml
   triggers:

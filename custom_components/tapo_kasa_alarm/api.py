@@ -1,8 +1,8 @@
 """Thin wrapper around pytapo for the Tapo camera alarm endpoints.
 
 pytapo is the library used by the Tapo Control integration, and the camera
-is connected the same way that integration does it: a camera account, or
-"admin" with the TP-Link cloud password when one is given. pytapo is
+is connected the same way that integration does it with a cloud password:
+"admin" with the TP-Link cloud password. pytapo is
 blocking, so every call runs in the executor. Only a single session is kept
 open per camera and every request is serialized, so the camera never sees
 parallel logins.
@@ -38,19 +38,6 @@ class AuthenticationError(CameraError):
     """The camera rejected the login."""
 
 
-def login_credentials(
-    username: str, password: str, cloud_password: str
-) -> tuple[str, str, str]:
-    """(user, password, cloud password) to log in with, like Tapo Control.
-
-    With a cloud password Tapo Control logs in as "admin" with it,
-    otherwise with the camera account.
-    """
-    if cloud_password:
-        return "admin", cloud_password, cloud_password
-    return username, password, ""
-
-
 def _wrap(err: Exception) -> CameraError:
     if isinstance(err, CameraError):
         return err
@@ -62,22 +49,21 @@ def _wrap(err: Exception) -> CameraError:
 def connect(
     hass: HomeAssistant | None,
     host: str,
-    username: str,
-    password: str,
-    cloud_password: str = "",
+    cloud_password: str,
     is_klap: bool | None = None,
 ) -> Tapo:
     """Log in to the camera the way Tapo Control does (blocking).
 
-    Same pytapo settings as Tapo Control's registerController.
+    Same pytapo settings as Tapo Control's registerController, with the
+    login Tapo Control uses when a cloud password is given: "admin" and
+    the TP-Link cloud password.
     """
-    user, pwd, cloud = login_credentials(username, password, cloud_password)
     try:
         return Tapo(
             host,
-            user,
-            pwd,
-            cloud,
+            "admin",
+            cloud_password,
+            cloud_password,
             reuseSession=False,
             printDebugInformation=_PYTAPO_LOGGER.debug,
             printWarnInformation=_PYTAPO_LOGGER.warning,

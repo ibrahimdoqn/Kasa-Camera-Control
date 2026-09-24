@@ -14,7 +14,7 @@ from homeassistant.config_entries import (
     ConfigFlowResult,
     OptionsFlow,
 )
-from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
+from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import format_mac
 from homeassistant.helpers.selector import (
@@ -41,32 +41,16 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-_PASSWORD = TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD))
-
-CREDENTIALS_SCHEMA = {
-    vol.Optional(CONF_USERNAME, default=""): str,
-    vol.Optional(CONF_PASSWORD, default=""): _PASSWORD,
-    vol.Optional(CONF_CLOUD_PASSWORD, default=""): _PASSWORD,
+PASSWORD_SCHEMA = {
+    vol.Required(CONF_CLOUD_PASSWORD): TextSelector(
+        TextSelectorConfig(type=TextSelectorType.PASSWORD)
+    )
 }
 
 
-class MissingCredentials(Exception):
-    """Neither a camera account nor a cloud password was given."""
-
-
-def _validate(hass: HomeAssistant, host: str, data: dict[str, Any]) -> dict[str, Any]:
+def _validate(hass: HomeAssistant, host: str, cloud_password: str) -> dict[str, Any]:
     """Log in once (blocking) and return the camera's details."""
-    if not data.get(CONF_CLOUD_PASSWORD) and not (
-        data.get(CONF_USERNAME) and data.get(CONF_PASSWORD)
-    ):
-        raise MissingCredentials
-    controller = connect(
-        hass,
-        host,
-        data.get(CONF_USERNAME, ""),
-        data.get(CONF_PASSWORD, ""),
-        data.get(CONF_CLOUD_PASSWORD, ""),
-    )
+    controller = connect(hass, host, cloud_password)
     try:
         info = basic_info(controller)
         mac = info.get("mac")
@@ -88,14 +72,12 @@ class TapoAlarmConfigFlow(ConfigFlow, domain=DOMAIN):
     VERSION = 2
 
     async def _async_validate(
-        self, host: str, data: dict[str, Any], errors: dict[str, str]
+        self, host: str, cloud_password: str, errors: dict[str, str]
     ) -> dict[str, Any] | None:
         try:
             return await self.hass.async_add_executor_job(
-                _validate, self.hass, host, data
+                _validate, self.hass, host, cloud_password
             )
-        except MissingCredentials:
-            errors["base"] = "missing_credentials"
         except AuthenticationError:
             errors["base"] = "invalid_auth"
         except CameraError:
@@ -110,7 +92,9 @@ class TapoAlarmConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         errors: dict[str, str] = {}
         if user_input is not None:
-            found = await self._async_validate(user_input[CONF_HOST], user_input, errors)
+            found = await self._async_validate(
+                user_input[CONF_HOST], user_input[CONF_CLOUD_PASSWORD], errors
+            )
             if found is not None:
                 await self.async_set_unique_id(found["unique_id"])
                 self._abort_if_unique_id_configured(
@@ -124,8 +108,8 @@ class TapoAlarmConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="user",
             data_schema=self.add_suggested_values_to_schema(
-                vol.Schema({vol.Required(CONF_HOST): str, **CREDENTIALS_SCHEMA}),
-                user_input,
+                vol.Schema({vol.Required(CONF_HOST): str, **PASSWORD_SCHEMA}),
+                {CONF_HOST: (user_input or {}).get(CONF_HOST)},
             ),
             errors=errors,
         )
@@ -141,46 +125,48 @@ class TapoAlarmConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
         entry = self._get_reauth_entry()
         if user_input is not None:
-            found = await self._async_validate(entry.data[CONF_HOST], user_input, errors)
+            found = await self._async_validate(
+                entry.data[CONF_HOST], user_input[CONF_CLOUD_PASSWORD], errors
+            )
             if found is not None:
                 return self.async_update_reload_and_abort(
                     entry,
-                    data_updates={**user_input, CONF_IS_KLAP: found[CONF_IS_KLAP]},
+                    data={
+                        CONF_HOST: entry.data[CONF_HOST],
+                        CONF_CLOUD_PASSWORD: user_input[CONF_CLOUD_PASSWORD],
+                        CONF_IS_KLAP: found[CONF_IS_KLAP],
+                    },
                 )
 
         return self.async_show_form(
             step_id="reauth_confirm",
-            data_schema=self.add_suggested_values_to_schema(
-                vol.Schema(CREDENTIALS_SCHEMA),
-                {CONF_USERNAME: entry.data.get(CONF_USERNAME, "")},
-            ),
+            data_schema=vol.Schema(PASSWORD_SCHEMA),
             errors=errors,
         )
 
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Change the IP address or the login (e.g. to a camera account)."""
+        """Change the IP address or the cloud password."""
         errors: dict[str, str] = {}
         entry = self._get_reconfigure_entry()
         if user_input is not None:
-            found = await self._async_validate(user_input[CONF_HOST], user_input, errors)
+            found = await self._async_validate(
+                user_input[CONF_HOST], user_input[CONF_CLOUD_PASSWORD], errors
+            )
             if found is not None:
                 await self.async_set_unique_id(found["unique_id"])
                 self._abort_if_unique_id_mismatch(reason="wrong_camera")
                 return self.async_update_reload_and_abort(
                     entry,
-                    data_updates={**user_input, CONF_IS_KLAP: found[CONF_IS_KLAP]},
+                    data={**user_input, CONF_IS_KLAP: found[CONF_IS_KLAP]},
                 )
 
         return self.async_show_form(
             step_id="reconfigure",
             data_schema=self.add_suggested_values_to_schema(
-                vol.Schema({vol.Required(CONF_HOST): str, **CREDENTIALS_SCHEMA}),
-                {
-                    CONF_HOST: entry.data[CONF_HOST],
-                    CONF_USERNAME: entry.data.get(CONF_USERNAME, ""),
-                },
+                vol.Schema({vol.Required(CONF_HOST): str, **PASSWORD_SCHEMA}),
+                {CONF_HOST: entry.data[CONF_HOST]},
             ),
             errors=errors,
         )

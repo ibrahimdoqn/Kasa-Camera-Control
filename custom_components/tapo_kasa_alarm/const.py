@@ -6,8 +6,8 @@ from datetime import timedelta
 
 DOMAIN = "tapo_kasa_alarm"
 
-# Login like Tapo Control: the camera account, or "admin" with the TP-Link
-# cloud password when one is given.
+# Login like Tapo Control with a cloud password: "admin" and the TP-Link
+# cloud password.
 CONF_CLOUD_PASSWORD = "cloud_password"
 CONF_IS_KLAP = "is_klap"
 

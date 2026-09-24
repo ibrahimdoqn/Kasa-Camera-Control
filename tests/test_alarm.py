@@ -18,13 +18,7 @@ from homeassistant.util import dt as dt_util
 
 from custom_components.tapo_kasa_alarm.const import DOMAIN
 
-DATA = {
-    "host": "192.168.1.50",
-    "username": "cam",
-    "password": "campw",
-    "cloud_password": "",
-    "is_klap": False,
-}
+DATA = {"host": "192.168.1.50", "cloud_password": "cloudpw", "is_klap": False}
 CONNECT = "custom_components.tapo_kasa_alarm.connect"
 
 
@@ -249,19 +243,15 @@ async def test_setup_and_toggle(hass: HomeAssistant) -> None:
 
 
 def test_login_like_tapo_control() -> None:
-    """Camera account, or "admin" + cloud password, with Tapo Control's settings."""
+    """ "admin" + cloud password, with Tapo Control's controller settings."""
     from custom_components.tapo_kasa_alarm.api import connect
 
     with patch("custom_components.tapo_kasa_alarm.api.Tapo") as tapo:
-        connect(None, "1.2.3.4", "cam", "campw")
-        args, kwargs = tapo.call_args
-        assert args == ("1.2.3.4", "cam", "campw", "")
-        assert kwargs["reuseSession"] is False
-        assert kwargs["retryStok"] is False
-
-        connect(None, "1.2.3.4", "cam", "campw", "cloudpw", False)
+        connect(None, "1.2.3.4", "cloudpw", False)
         args, kwargs = tapo.call_args
         assert args == ("1.2.3.4", "admin", "cloudpw", "cloudpw")
+        assert kwargs["reuseSession"] is False
+        assert kwargs["retryStok"] is False
         assert kwargs["isKLAP"] is False
 
 
@@ -276,20 +266,22 @@ def test_login_errors() -> None:
         "custom_components.tapo_kasa_alarm.api.Tapo",
         side_effect=Exception("Invalid authentication data"),
     ), pytest.raises(AuthenticationError):
-        connect(None, "1.2.3.4", "cam", "bad")
+        connect(None, "1.2.3.4", "bad")
     with patch(
         "custom_components.tapo_kasa_alarm.api.Tapo",
         side_effect=requests.ConnectionError("refused"),
     ), pytest.raises(CameraError) as err:
-        connect(None, "1.2.3.4", "cam", "campw")
+        connect(None, "1.2.3.4", "cloudpw")
     assert not isinstance(err.value, AuthenticationError)
 
 
 async def test_config_flow(hass: HomeAssistant) -> None:
-    user_input = {"host": "192.168.1.50", "username": "cam", "password": "campw"}
+    user_input = {"host": "192.168.1.50", "cloud_password": "cloudpw"}
     with patch(
         "custom_components.tapo_kasa_alarm.config_flow.connect", return_value=FakeTapo()
-    ), patch("custom_components.tapo_kasa_alarm.async_setup_entry", return_value=True):
+    ) as connect, patch(
+        "custom_components.tapo_kasa_alarm.async_setup_entry", return_value=True
+    ):
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": "user"}
         )
@@ -300,26 +292,25 @@ async def test_config_flow(hass: HomeAssistant) -> None:
     assert result["title"] == "Bahce"
     assert result["result"].unique_id == "aa:bb:cc:dd:ee:ff"
     assert result["result"].version == 2
-    assert result["result"].data == {**user_input, "cloud_password": "", "is_klap": False}
+    assert result["result"].data == {**user_input, "is_klap": False}
+    assert connect.call_args.args[1:] == ("192.168.1.50", "cloudpw")
 
 
 async def test_config_flow_errors(hass: HomeAssistant) -> None:
-    from custom_components.tapo_kasa_alarm.api import AuthenticationError
+    from custom_components.tapo_kasa_alarm.api import AuthenticationError, CameraError
 
     result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"], {"host": "192.168.1.50"}
-    )
-    assert result["errors"] == {"base": "missing_credentials"}
-
-    with patch(
-        "custom_components.tapo_kasa_alarm.config_flow.connect",
-        side_effect=AuthenticationError("bad"),
+    for error, expected in (
+        (AuthenticationError("bad"), "invalid_auth"),
+        (CameraError("refused"), "cannot_connect"),
     ):
-        result = await hass.config_entries.flow.async_configure(
-            result["flow_id"], {"host": "192.168.1.50", "cloud_password": "bad"}
-        )
-    assert result["errors"] == {"base": "invalid_auth"}
+        with patch(
+            "custom_components.tapo_kasa_alarm.config_flow.connect", side_effect=error
+        ):
+            result = await hass.config_entries.flow.async_configure(
+                result["flow_id"], {"host": "192.168.1.50", "cloud_password": "bad"}
+            )
+        assert result["errors"] == {"base": expected}
 
 
 async def test_migrate_from_kasa(hass: HomeAssistant) -> None:
@@ -342,36 +333,67 @@ async def test_migrate_from_kasa(hass: HomeAssistant) -> None:
         await hass.async_block_till_done()
     assert entry.state is ConfigEntryState.LOADED
     assert entry.version == 2
-    assert entry.data == {
-        "host": "192.168.1.50",
-        "username": "",
-        "password": "",
-        "cloud_password": "cloudpw",
-        "is_klap": False,
-    }
+    assert entry.data == DATA
     assert entry.options == {"scan_interval": 10, "session_renew": 8}
-    assert connect.call_args.args[1:] == ("192.168.1.50", "", "", "cloudpw", False)
+    assert connect.call_args.args[1:] == ("192.168.1.50", "cloudpw", False)
     # Entity IDs stay the same.
     assert hass.states.get("switch.bahce_alarm") is not None
 
 
-async def test_reconfigure_to_camera_account(hass: HomeAssistant) -> None:
-    entry, _ = await _setup(
-        hass, FakeTapo(), data={**DATA, "username": "", "password": "", "cloud_password": "c"}
+async def test_camera_account_entry_asks_for_cloud_password(hass: HomeAssistant) -> None:
+    """An entry set up with a camera account in 2.0.0 asks for the cloud password."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        version=2,
+        data={"host": "192.168.1.50", "username": "cam", "password": "campw",
+              "cloud_password": "", "is_klap": False},
+        unique_id="aa:bb:cc:dd:ee:ff",
     )
+    entry.add_to_hass(hass)
+    with patch(CONNECT) as connect:
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+    connect.assert_not_called()
+    assert entry.state is ConfigEntryState.SETUP_ERROR
+    [flow] = hass.config_entries.flow.async_progress()
+    assert flow["context"]["source"] == "reauth"
+
+    with patch(
+        "custom_components.tapo_kasa_alarm.config_flow.connect", return_value=FakeTapo()
+    ), patch(CONNECT, return_value=FakeTapo()):
+        result = await hass.config_entries.flow.async_configure(
+            flow["flow_id"], {"cloud_password": "cloudpw"}
+        )
+        await hass.async_block_till_done()
+    assert result["reason"] == "reauth_successful"
+    assert entry.data == DATA
+    assert entry.state is ConfigEntryState.LOADED
+
+
+async def test_reconfigure(hass: HomeAssistant) -> None:
+    entry, _ = await _setup(hass, FakeTapo())
     result = await entry.start_reconfigure_flow(hass)
     with patch(
         "custom_components.tapo_kasa_alarm.config_flow.connect", return_value=FakeTapo()
     ), patch(CONNECT, return_value=FakeTapo()):
         result = await hass.config_entries.flow.async_configure(
-            result["flow_id"],
-            {"host": "192.168.1.51", "username": "cam", "password": "campw"},
+            result["flow_id"], {"host": "192.168.1.51", "cloud_password": "new"}
         )
         await hass.async_block_till_done()
     assert result["reason"] == "reconfigure_successful"
+    assert entry.data == {"host": "192.168.1.51", "cloud_password": "new", "is_klap": False}
+
+    # Another camera at the new IP is not saved.
+    result = await entry.start_reconfigure_flow(hass)
+    with patch(
+        "custom_components.tapo_kasa_alarm.config_flow.connect",
+        return_value=FakeTapo(mac="11-22-33-44-55-66"),
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"host": "192.168.1.52", "cloud_password": "new"}
+        )
+    assert result["reason"] == "wrong_camera"
     assert entry.data["host"] == "192.168.1.51"
-    assert entry.data["username"] == "cam"
-    assert entry.data["cloud_password"] == ""
 
 
 async def test_only_the_alert_config_calls_are_used(hass: HomeAssistant) -> None:

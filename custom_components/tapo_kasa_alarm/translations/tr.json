@@ -3,48 +3,32 @@
     "step": {
       "user": {
         "title": "Tapo kamera",
-        "description": "Tapo Control gibi giriş yapılır: ya kamera hesabı (Tapo uygulaması → kamera → Ayarlar → Gelişmiş ayarlar → Kamera hesabı) ya da bunu boş bırakıp TP-Link bulut şifresini girin (kameraya o zaman \"admin\" olarak girilir).",
+        "description": "Tapo uygulamasında kullandığınız TP-Link hesabının şifresini girin. Kameraya bu şifreyle yerel olarak \"admin\" kullanıcısıyla girilir; Tapo Control'ün bulut şifresiyle girdiği gibi.",
         "data": {
           "host": "Host / IP",
-          "username": "Kamera hesabı kullanıcı adı",
-          "password": "Kamera hesabı şifresi",
-          "cloud_password": "TP-Link bulut şifresi (isteğe bağlı)"
-        },
-        "data_description": {
-          "cloud_password": "Girilirse Tapo Control'deki gibi kamera hesabı yerine bu kullanılır."
+          "cloud_password": "TP-Link bulut şifresi"
         }
       },
       "reauth_confirm": {
         "title": "Yeniden kimlik doğrulama",
-        "description": "Tapo Control gibi giriş yapılır: ya kamera hesabı (Tapo uygulaması → kamera → Ayarlar → Gelişmiş ayarlar → Kamera hesabı) ya da bunu boş bırakıp TP-Link bulut şifresini girin (kameraya o zaman \"admin\" olarak girilir).",
+        "description": "Tapo uygulamasında kullandığınız TP-Link hesabının şifresini girin. Kameraya bu şifreyle yerel olarak \"admin\" kullanıcısıyla girilir; Tapo Control'ün bulut şifresiyle girdiği gibi.",
         "data": {
-          "username": "Kamera hesabı kullanıcı adı",
-          "password": "Kamera hesabı şifresi",
-          "cloud_password": "TP-Link bulut şifresi (isteğe bağlı)"
-        },
-        "data_description": {
-          "cloud_password": "Girilirse Tapo Control'deki gibi kamera hesabı yerine bu kullanılır."
+          "cloud_password": "TP-Link bulut şifresi"
         }
       },
       "reconfigure": {
         "title": "Yeniden yapılandır",
-        "description": "Tapo Control gibi giriş yapılır: ya kamera hesabı (Tapo uygulaması → kamera → Ayarlar → Gelişmiş ayarlar → Kamera hesabı) ya da bunu boş bırakıp TP-Link bulut şifresini girin (kameraya o zaman \"admin\" olarak girilir).",
+        "description": "Tapo uygulamasında kullandığınız TP-Link hesabının şifresini girin. Kameraya bu şifreyle yerel olarak \"admin\" kullanıcısıyla girilir; Tapo Control'ün bulut şifresiyle girdiği gibi.",
         "data": {
           "host": "Host / IP",
-          "username": "Kamera hesabı kullanıcı adı",
-          "password": "Kamera hesabı şifresi",
-          "cloud_password": "TP-Link bulut şifresi (isteğe bağlı)"
-        },
-        "data_description": {
-          "cloud_password": "Girilirse Tapo Control'deki gibi kamera hesabı yerine bu kullanılır."
+          "cloud_password": "TP-Link bulut şifresi"
         }
       }
     },
     "error": {
       "invalid_auth": "Geçersiz kullanıcı adı veya şifre",
       "cannot_connect": "Kameraya bağlanılamadı",
-      "unknown": "Beklenmeyen hata",
-      "missing_credentials": "Kamera hesabı kullanıcı adı ve şifresini ya da TP-Link bulut şifresini girin"
+      "unknown": "Beklenmeyen hata"
     },
     "abort": {
       "already_configured": "Kamera zaten ekli",

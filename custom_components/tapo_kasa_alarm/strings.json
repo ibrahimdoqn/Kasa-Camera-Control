@@ -3,48 +3,32 @@
     "step": {
       "user": {
         "title": "Tapo camera",
-        "description": "Log in like Tapo Control: either the camera account (Tapo app → camera → Settings → Advanced settings → Camera account), or leave it empty and enter the TP-Link cloud password (the camera is then logged in to as \"admin\").",
+        "description": "Enter the password of the TP-Link account you use in the Tapo app. The camera is logged in to locally as \"admin\" with it, like Tapo Control does with a cloud password.",
         "data": {
           "host": "Host / IP",
-          "username": "Camera account username",
-          "password": "Camera account password",
-          "cloud_password": "TP-Link cloud password (optional)"
-        },
-        "data_description": {
-          "cloud_password": "When set, it is used instead of the camera account, like Tapo Control."
+          "cloud_password": "TP-Link cloud password"
         }
       },
       "reauth_confirm": {
         "title": "Re-authenticate",
-        "description": "Log in like Tapo Control: either the camera account (Tapo app → camera → Settings → Advanced settings → Camera account), or leave it empty and enter the TP-Link cloud password (the camera is then logged in to as \"admin\").",
+        "description": "Enter the password of the TP-Link account you use in the Tapo app. The camera is logged in to locally as \"admin\" with it, like Tapo Control does with a cloud password.",
         "data": {
-          "username": "Camera account username",
-          "password": "Camera account password",
-          "cloud_password": "TP-Link cloud password (optional)"
-        },
-        "data_description": {
-          "cloud_password": "When set, it is used instead of the camera account, like Tapo Control."
+          "cloud_password": "TP-Link cloud password"
         }
       },
       "reconfigure": {
         "title": "Reconfigure",
-        "description": "Log in like Tapo Control: either the camera account (Tapo app → camera → Settings → Advanced settings → Camera account), or leave it empty and enter the TP-Link cloud password (the camera is then logged in to as \"admin\").",
+        "description": "Enter the password of the TP-Link account you use in the Tapo app. The camera is logged in to locally as \"admin\" with it, like Tapo Control does with a cloud password.",
         "data": {
           "host": "Host / IP",
-          "username": "Camera account username",
-          "password": "Camera account password",
-          "cloud_password": "TP-Link cloud password (optional)"
-        },
-        "data_description": {
-          "cloud_password": "When set, it is used instead of the camera account, like Tapo Control."
+          "cloud_password": "TP-Link cloud password"
         }
       }
     },
     "error": {
       "invalid_auth": "Invalid credentials",
       "cannot_connect": "Cannot connect to the camera",
-      "unknown": "Unexpected error",
-      "missing_credentials": "Enter a camera account username and password, or the TP-Link cloud password"
+      "unknown": "Unexpected error"
     },
     "abort": {
       "already_configured": "Camera is already configured",
