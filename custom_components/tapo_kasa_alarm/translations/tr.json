@@ -81,30 +81,6 @@
       "reboot": {
         "name": "Yeniden başlat"
       }
-    },
-    "binary_sensor": {
-      "connection": {
-        "name": "Bağlantı",
-        "state_attributes": {
-          "latency_ms": {
-            "name": "Gecikme (ms)"
-          },
-          "last_disconnect": {
-            "name": "Son kopma"
-          },
-          "last_outage_seconds": {
-            "name": "Son kesinti süresi (sn)"
-          },
-          "down_since": {
-            "name": "Kesinti başlangıcı"
-          }
-        }
-      }
-    },
-    "sensor": {
-      "connected_since": {
-        "name": "Bağlantı kuruldu"
-      }
     }
   }
 }

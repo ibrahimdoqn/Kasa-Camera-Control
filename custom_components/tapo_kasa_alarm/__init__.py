@@ -26,11 +26,10 @@ from .const import (
     scan_interval,
 )
 from .coordinator import TapoAlarmCoordinator, auth_failed, auth_ok
-from .ping import PingCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS = [Platform.BINARY_SENSOR, Platform.BUTTON, Platform.SENSOR, Platform.SWITCH]
+PLATFORMS = [Platform.BUTTON, Platform.SWITCH]
 
 type TapoAlarmConfigEntry = ConfigEntry[TapoAlarmCoordinator]
 
@@ -82,8 +81,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: TapoAlarmConfigEntry) ->
     except Exception:
         await api.close()
         raise
-    coordinator.ping = PingCoordinator(hass, entry, host)
-    await coordinator.ping.async_refresh()
 
     entry.runtime_data = coordinator
     _remove_connection_sensors(hass, entry)
@@ -108,9 +105,9 @@ async def _async_options_updated(hass: HomeAssistant, entry: TapoAlarmConfigEntr
 
 
 def _remove_connection_sensors(hass: HomeAssistant, entry: TapoAlarmConfigEntry) -> None:
-    """Drop the disconnect count sensor earlier versions created."""
+    """Drop the connection sensors earlier versions created."""
     registry = er.async_get(hass)
-    for key in ("disconnects",):
+    for key in ("connected_since", "disconnects"):
         unique_id = f"{entry.unique_id or entry.entry_id}_{key}"
         if entity_id := registry.async_get_entity_id("sensor", DOMAIN, unique_id):
             registry.async_remove(entity_id)

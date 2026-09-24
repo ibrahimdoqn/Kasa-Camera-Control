@@ -10,12 +10,10 @@
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/ibrahimdoqn/Kasa-Camera-Control/issues",
   "loggers": [
-    "icmplib",
     "pytapo"
   ],
   "requirements": [
-    "icmplib>=3.0",
     "pytapo==3.4.19"
   ],
-  "version": "2.0.6"
+  "version": "2.0.5"
 }

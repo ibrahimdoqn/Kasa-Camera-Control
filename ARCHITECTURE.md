@@ -9,12 +9,9 @@ Home Assistant
  ├─ config_flow.py   Kamera ekleme, şifre yenileme, yeniden yapılandırma, seçenekler
  ├─ __init__.py      Kurulum: giriş, MAC kontrolü, KLAP kaydı, koordinatörü başlatma
  ├─ coordinator.py   Düzenli sorgu, komutlar, giriş reddi sayacı
- ├─ ping.py          Kameraya ping, bağlantı durumu
  ├─ api.py           pytapo sarmalayıcısı: giriş, okuma, yazma, hata sınıflandırma
  ├─ switch.py        Alarm, Alarm sesi, Alarm ışığı, Bildirimler anahtarları
  ├─ button.py        Yeniden başlat düğmesi
- ├─ binary_sensor.py Bağlantı (ping'e cevap veriyor mu, son kesinti)
- ├─ sensor.py        Bağlantı kuruldu (kesintisiz ping cevabının başlangıcı)
  ├─ entity.py        Ortak cihaz bilgisi (model, yazılım sürümü, MAC)
  └─ const.py         Sabitler
         │
@@ -164,17 +161,6 @@ Kameralar geçerli bir girişi de kısa süre reddedebilir, örneğin yeniden ba
 - Komutlardaki red sayılmaz ve şifre sordurmaz.
 - Kamera çok sayıda başarısız girişten sonra kendini geçici olarak kilitlerse ("Temporary Suspension") bu `CameraError` sayılır: şifre sorulmaz, kilit açılınca tekrar denenir.
 
-## Bağlantı durumu (ping)
-
-`ping.PingCoordinator` her kamera için ayrı çalışır ve kameraya **5 saniyede bir** ping atar. Kamera sorgularından ve komutlarından tamamen bağımsızdır; onların hataları bağlantı durumunu değiştirmez.
-
-- **Ping yöntemi:** Home Assistant'ın Ping (ICMP) entegrasyonuyla aynı. `icmplib` ile ayrıcalıklı soket denenir, olmazsa ayrıcalıksız soket, o da olmazsa sistemin `ping` komutu kullanılır. Seçim bir kez yapılır ve tüm kameralar için saklanır.
-- **Her kontrol:** 2 paket gönderilir, her birine 1 saniye beklenir. Tek bir cevap bile gelirse kamera bağlı sayılır.
-- **Durum:** Cevap gelince bağlı; önceden kesikse kesinti süresi hesaplanır ve **Bağlantı kuruldu** şimdiye ayarlanır. Cevap gelmezse kesik; kesinti başlangıcı ve son kopma kaydedilir.
-- **Ping atılamıyorsa** (örneğin `ping` komutu yok ve soket izni de yok): sensörler kameranın kopuk olduğunu değil, *kullanılamıyor* olduğunu gösterir; sebep log'a yazılır.
-
-Ping kameranın ağda olup olmadığını ölçer. Kamera ağda kalıp yalnızca servislerini yeniden başlatırsa ping cevap vermeye devam eder: anahtarlar (sorgu başarısız olduğu için) "kullanılamıyor" olur, **Bağlantı** ise *Bağlı* kalır. İkisine birlikte bakmak kopmanın türünü gösterir.
-
 ## Yapılandırma
 
 - **Config entry verisi:** `host`, `cloud_password`, `is_klap`.
@@ -214,7 +200,7 @@ Tapo Android uygulaması 3.21.112 incelenerek karşılaştırıldı.
 | Sorgu | `getMost`, ~90 komut, 30 saniye | 1 istek, 5 saniye (ayarlanabilir) |
 | Alarm komutu | önce eski komutlar; `setAlertConfig`'te tüm ayar | yalnızca `setAlertConfig`, yalnızca değişen alan |
 | Yazmadan önce/sonra | önce okumaz; sonra `getMost` ile yeniler | önce okur, gerekmiyorsa yazmaz; sonra okumaz |
-| Özellikler | görüntü, hareket, PTZ, ... | yalnızca alarm, bildirim, yeniden başlatma, bağlantı tanılama |
+| Özellikler | görüntü, hareket, PTZ, ... | yalnızca alarm, bildirim, yeniden başlatma |
 
 ## Testler
 
@@ -225,9 +211,9 @@ Testlerin kapsadıkları:
 - **Bağlantı ayarları:** Tapo Control'le aynı pytapo ayarları, KLAP kaydı ve başka cihazın KLAP türünün kaydedilmemesi.
 - **Formlar:** kamera ekleme, hatalar, şifre yenileme, yeniden yapılandırma ve seçenekler.
 - **Hata yönetimi:** kurulumda ve sorguda giriş reddi toleransı.
-- **Bağlantı durumu:** ping cevabına göre bağlanma ve kopma, sorgu hatalarının bağlantıyı etkilememesi, ping yönteminin seçimi, ping atılamazsa sensörlerin kullanılamaz olması; eski kopma sayısı sensörünün kaldırılması.
+- **Kamera ulaşılamazken:** anahtarların "kullanılamıyor" olması ve geri gelmesi; eski bağlantı sensörlerinin kaldırılması.
 
 ```bash
-pip install pytest-homeassistant-custom-component pytapo==3.4.19 icmplib
+pip install pytest-homeassistant-custom-component pytapo==3.4.19
 pytest
 ```

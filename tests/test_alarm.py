@@ -18,19 +18,9 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 
 from custom_components.tapo_kasa_alarm.const import DOMAIN
-from custom_components.tapo_kasa_alarm.ping import ping_mode as real_ping_mode
 
 DATA = {"host": "192.168.1.50", "cloud_password": "cloudpw", "is_klap": False}
 CONNECT = "custom_components.tapo_kasa_alarm.connect"
-
-
-@pytest.fixture(autouse=True)
-def camera_ping():
-    """Never send real pings from tests; the camera answers in 12.3 ms."""
-    with patch("custom_components.tapo_kasa_alarm.ping.ping", return_value=12.3) as mock, patch(
-        "custom_components.tapo_kasa_alarm.ping.ping_mode", return_value=True
-    ):
-        yield mock
 
 
 async def _press(hass: HomeAssistant, service: str, entity_id: str) -> None:
@@ -537,93 +527,22 @@ async def test_unreachable_camera(hass: HomeAssistant) -> None:
     assert hass.states.get("switch.bahce_alarm").state == "off"
 
 
-async def test_connection_follows_ping(hass: HomeAssistant, camera_ping) -> None:
-    entry, _ = await _setup(hass, FakeTapo())
-    ping_coordinator = entry.runtime_data.ping
-
-    connection = hass.states.get("binary_sensor.bahce_connection")
-    assert connection.state == "on"
-    assert connection.attributes["latency_ms"] == 12.3
-    assert connection.attributes["last_disconnect"] is None
-    since = hass.states.get("sensor.bahce_connected_since").state
-    assert since not in ("unknown", "unavailable")
-
-    # No answer: disconnected at once; the switches do not depend on it.
-    camera_ping.return_value = None
-    await ping_coordinator.async_refresh()
-    await ping_coordinator.async_refresh()
-    await hass.async_block_till_done()
-    connection = hass.states.get("binary_sensor.bahce_connection")
-    assert connection.state == "off"
-    assert connection.attributes["down_since"] is not None
-    assert connection.attributes["last_disconnect"] == connection.attributes["down_since"]
-    assert connection.attributes["latency_ms"] is None
-    assert hass.states.get("sensor.bahce_connected_since").state == "unknown"
-    assert hass.states.get("switch.bahce_alarm").state == "off"
-
-    # Answers again: connected from now, the outage length is kept.
-    camera_ping.return_value = 8.0
-    await ping_coordinator.async_refresh()
-    await hass.async_block_till_done()
-    connection = hass.states.get("binary_sensor.bahce_connection")
-    assert connection.state == "on"
-    assert connection.attributes["down_since"] is None
-    assert connection.attributes["last_outage_seconds"] is not None
-    assert connection.attributes["last_disconnect"] is not None
-    assert hass.states.get("sensor.bahce_connected_since").state not in (
-        "unknown",
-        "unavailable",
-    )
-
-
-async def test_ping_not_possible(hass: HomeAssistant, camera_ping) -> None:
-    """If pinging itself fails the sensors are unavailable, not disconnected."""
-    camera_ping.side_effect = FileNotFoundError("ping")
-    await _setup(hass, FakeTapo())
-    assert hass.states.get("binary_sensor.bahce_connection").state == "unavailable"
-    assert hass.states.get("switch.bahce_alarm").state == "off"
-
-
-async def test_poll_errors_do_not_change_the_connection(
-    hass: HomeAssistant, camera_ping
-) -> None:
-    """Only ping decides the connection sensors."""
-    cam = FakeTapo()
-    entry, _ = await _setup(hass, cam)
-    cam.fail = requests.ConnectionError("Connection refused")
-    await entry.runtime_data.async_refresh()
-    await hass.async_block_till_done()
-    assert hass.states.get("switch.bahce_alarm").state == "unavailable"
-    assert hass.states.get("binary_sensor.bahce_connection").state == "on"
-
-
-async def test_ping_modes(hass: HomeAssistant) -> None:
-    """icmplib when a socket is allowed, the ping command otherwise."""
-    from custom_components.tapo_kasa_alarm import ping as ping_module
-
-    with patch.object(ping_module, "_can_ping", side_effect=[False, True]):
-        assert await real_ping_mode(hass) is False
-    # Cached for all cameras.
-    with patch.object(ping_module, "_can_ping", side_effect=AssertionError):
-        assert await real_ping_mode(hass) is False
-    hass.data.pop("tapo_kasa_alarm_ping_privileged")
-    with patch.object(ping_module, "_can_ping", return_value=False):
-        assert await real_ping_mode(hass) is None
-
-
-async def test_disconnect_count_sensor_is_removed(hass: HomeAssistant) -> None:
-    """The disconnect count sensor earlier versions created is removed."""
+async def test_connection_sensors_are_removed(hass: HomeAssistant) -> None:
+    """The connection sensors earlier versions created are removed."""
     entry = MockConfigEntry(
         domain=DOMAIN, version=2, data=DATA, unique_id="aa:bb:cc:dd:ee:ff"
     )
     entry.add_to_hass(hass)
     registry = er.async_get(hass)
-    old = registry.async_get_or_create(
-        "sensor", DOMAIN, "aa:bb:cc:dd:ee:ff_disconnects", config_entry=entry
-    )
+    old = [
+        registry.async_get_or_create(
+            "sensor", DOMAIN, f"aa:bb:cc:dd:ee:ff_{key}", config_entry=entry
+        )
+        for key in ("connected_since", "disconnects")
+    ]
     with patch(CONNECT, return_value=FakeTapo()):
         await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
     assert entry.state is ConfigEntryState.LOADED
-    assert registry.async_get(old.entity_id) is None
-    assert hass.states.get("sensor.bahce_connected_since") is not None
+    assert all(registry.async_get(entity.entity_id) is None for entity in old)
+    assert hass.states.get("button.bahce_reboot") is not None

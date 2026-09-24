@@ -13,7 +13,6 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .api import AuthenticationError, CameraError, TapoAlarmApi
 from .const import AUTH_RETRIES, CONF_SCAN_INTERVAL, DOMAIN, scan_interval
-from .ping import PingCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -55,8 +54,7 @@ class TapoAlarmCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             update_interval=scan_interval(entry.options.get(CONF_SCAN_INTERVAL)),
         )
         self.api = api
-        # Pings the camera for the connection diagnostic entities.
-        self.ping: PingCoordinator | None = None
+
     async def _async_update_data(self) -> dict[str, Any]:
         try:
             data = await self.api.get_state()

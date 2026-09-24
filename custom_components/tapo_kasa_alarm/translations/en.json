@@ -81,30 +81,6 @@
       "reboot": {
         "name": "Reboot"
       }
-    },
-    "binary_sensor": {
-      "connection": {
-        "name": "Connection",
-        "state_attributes": {
-          "latency_ms": {
-            "name": "Latency (ms)"
-          },
-          "last_disconnect": {
-            "name": "Last disconnect"
-          },
-          "last_outage_seconds": {
-            "name": "Last outage (s)"
-          },
-          "down_since": {
-            "name": "Down since"
-          }
-        }
-      }
-    },
-    "sensor": {
-      "connected_since": {
-        "name": "Connected since"
-      }
     }
   }
 }

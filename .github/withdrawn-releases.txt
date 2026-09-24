@@ -1,3 +1,4 @@
 # Releases listed here are deleted (with their git tag) when this file is
 # pushed to main. One tag per line.
 v1.7.0
+v2.0.6
