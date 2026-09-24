@@ -2,7 +2,7 @@
 
 from datetime import timedelta
 import threading
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from pytest_homeassistant_custom_component.common import (
@@ -18,19 +18,9 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 
 from custom_components.tapo_kasa_alarm.const import DOMAIN
-from custom_components.tapo_kasa_alarm.port_check import check_port as real_check_port
 
 DATA = {"host": "192.168.1.50", "cloud_password": "cloudpw", "is_klap": False}
 CONNECT = "custom_components.tapo_kasa_alarm.connect"
-
-
-@pytest.fixture(autouse=True)
-def port_check():
-    """Never connect to real cameras from tests; the port answers."""
-    with patch(
-        "custom_components.tapo_kasa_alarm.port_check.check_port", return_value=None
-    ) as mock:
-        yield mock
 
 
 async def _press(hass: HomeAssistant, service: str, entity_id: str) -> None:
@@ -513,12 +503,11 @@ async def test_options_flow(hass: HomeAssistant) -> None:
     entry, _ = await _setup(hass, FakeTapo())
     result = await hass.config_entries.options.async_init(entry.entry_id)
     result = await hass.config_entries.options.async_configure(
-        result["flow_id"], {"scan_interval": 30, "port_check_interval": 3}
+        result["flow_id"], {"scan_interval": 30}
     )
     await hass.async_block_till_done()
-    assert entry.options == {"scan_interval": 30, "port_check_interval": 3}
+    assert entry.options == {"scan_interval": 30}
     assert entry.runtime_data.update_interval == timedelta(seconds=30)
-    assert entry.runtime_data.port_check.update_interval == timedelta(seconds=3)
     assert entry.state is ConfigEntryState.LOADED
 
 
@@ -557,75 +546,3 @@ async def test_connection_sensors_are_removed(hass: HomeAssistant) -> None:
     assert entry.state is ConfigEntryState.LOADED
     assert all(registry.async_get(entity.entity_id) is None for entity in old)
     assert hass.states.get("button.bahce_reboot") is not None
-
-
-async def test_default_port_check_interval(hass: HomeAssistant) -> None:
-    entry, _ = await _setup(hass, FakeTapo())
-    assert entry.runtime_data.port_check.update_interval == timedelta(seconds=1)
-
-
-async def test_connection_and_uptime(hass: HomeAssistant, port_check) -> None:
-    entry, _ = await _setup(hass, FakeTapo())
-    checker = entry.runtime_data.port_check
-
-    connection = hass.states.get("binary_sensor.bahce_connection")
-    assert connection.state == "on"
-    assert connection.attributes["last_disconnect"] is None
-    uptime = hass.states.get("sensor.bahce_uptime").state
-    assert uptime not in ("unknown", "unavailable")
-
-    # One refused check is a hiccup: still connected, uptime unchanged.
-    port_check.return_value = "restarting"
-    await checker.async_refresh()
-    await hass.async_block_till_done()
-    assert hass.states.get("binary_sensor.bahce_connection").state == "on"
-    assert hass.states.get("sensor.bahce_uptime").state == uptime
-
-    # The second in a row: disconnected since the first one.
-    port_check.return_value = "unreachable"
-    await checker.async_refresh()
-    await hass.async_block_till_done()
-    connection = hass.states.get("binary_sensor.bahce_connection")
-    assert connection.state == "off"
-    assert connection.attributes["last_disconnect_reason"] == "restarting"
-    assert connection.attributes["down_since"] == connection.attributes["last_disconnect"]
-    assert hass.states.get("sensor.bahce_uptime").state == "unknown"
-    # The camera polls do not depend on it.
-    assert hass.states.get("switch.bahce_alarm").state == "off"
-
-    # Answers again: connected, uptime from now, the outage length is kept.
-    port_check.return_value = None
-    await checker.async_refresh()
-    await hass.async_block_till_done()
-    connection = hass.states.get("binary_sensor.bahce_connection")
-    assert connection.state == "on"
-    assert connection.attributes["down_since"] is None
-    assert connection.attributes["last_outage_seconds"] is not None
-    assert connection.attributes["last_disconnect_reason"] == "restarting"
-    assert hass.states.get("sensor.bahce_uptime").state not in ("unknown", "unavailable")
-
-
-async def test_camera_down_at_start(hass: HomeAssistant, port_check) -> None:
-    """Not answering at the first check shows disconnected at once."""
-    port_check.return_value = "unreachable"
-    await _setup(hass, FakeTapo())
-    connection = hass.states.get("binary_sensor.bahce_connection")
-    assert connection.state == "off"
-    assert connection.attributes["last_disconnect_reason"] == "unreachable"
-    assert hass.states.get("sensor.bahce_uptime").state == "unknown"
-
-
-async def test_check_port_results() -> None:
-    check_port = real_check_port
-    writer = MagicMock()
-    writer.wait_closed = AsyncMock()
-    with patch("asyncio.open_connection", AsyncMock(return_value=(None, writer))):
-        assert await check_port("1.2.3.4") is None
-    writer.close.assert_called_once()
-    with patch("asyncio.open_connection", AsyncMock(side_effect=ConnectionRefusedError)):
-        assert await check_port("1.2.3.4") == "restarting"
-    with patch("asyncio.open_connection", AsyncMock(side_effect=OSError(113, "no route"))):
-        assert await check_port("1.2.3.4") == "unreachable"
-    with patch("asyncio.open_connection", AsyncMock(side_effect=TimeoutError)):
-        assert await check_port("1.2.3.4") == "unreachable"
-

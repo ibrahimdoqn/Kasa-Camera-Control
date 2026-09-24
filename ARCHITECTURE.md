@@ -11,9 +11,6 @@ Home Assistant
  ├─ coordinator.py   Düzenli sorgu, komutlar, giriş reddi sayacı
  ├─ api.py           pytapo sarmalayıcısı: giriş, okuma, yazma, hata sınıflandırma
  ├─ switch.py        Alarm, Alarm sesi, Alarm ışığı, Bildirimler anahtarları
- ├─ port_check.py    443 portu kontrolü, bağlantı durumu
- ├─ binary_sensor.py Bağlantı (bağlı mı, son kopma)
- ├─ sensor.py        Uptime (kesintisiz çalışmanın başlangıcı)
  ├─ button.py        Yeniden başlat düğmesi
  ├─ entity.py        Ortak cihaz bilgisi (model, yazılım sürümü, MAC)
  └─ const.py         Sabitler
@@ -164,29 +161,10 @@ Kameralar geçerli bir girişi de kısa süre reddedebilir, örneğin yeniden ba
 - Komutlardaki red sayılmaz ve şifre sordurmaz.
 - Kamera çok sayıda başarısız girişten sonra kendini geçici olarak kilitlerse ("Temporary Suspension") bu `CameraError` sayılır: şifre sorulmaz, kilit açılınca tekrar denenir.
 
-## Bağlantı durumu (port kontrolü)
-
-`port_check.PortCheckCoordinator` her kamera için ayrı çalışır. Kamera sorgularından tamamen bağımsızdır.
-
-- **Kontrol:** Kameranın 443 portuna TCP bağlantısı açılır ve hemen kapatılır (`asyncio.open_connection`, 2 saniye zaman aşımı). TLS el sıkışması, giriş ve veri yoktur.
-- **Aralık:** Seçeneklerdeki *Bağlantı kontrol aralığı*, varsayılan 1 saniye (1–60). Değişiklik yeniden bağlanmadan uygulanır.
-- **Sonuçlar:**
-
-  | Sonuç | Anlamı | Sebep |
-  |---|---|---|
-  | Bağlantı kabul edildi | Kameranın ana programı (API, RTSP, alarm) çalışıyor | — |
-  | `ConnectionRefusedError` | Kamera ağda, ana program çökmüş veya yeniden başlıyor | `restarting` |
-  | Zaman aşımı veya diğer `OSError` | Kamera ağda değil | `unreachable` |
-
-- **Kopma:** Tek başarısız kontrol takılma sayılır; art arda 2 başarısız kontrolde (`FAILURES_TO_DISCONNECT`) bağlantı kesik olur. Kesinti başlangıcı, son kopma ve sebep ilk başarısız kontrolden alınır. İlk kontrol başarısızsa bağlantı hemen kesik gösterilir.
-- **Geri geliş:** İlk başarılı kontrolde bağlı olur, kesinti süresi hesaplanır, **Uptime** şimdiye ayarlanır.
-- **Kayıt yükü:** Durum yalnızca bağlanma ve kopma anlarında değişir (`always_update=False`); saniyede bir kontrol kayıt defterine her saniye yeni durum yazmaz. **Uptime** bir zaman damgasıdır, Home Assistant'ın Uptime entegrasyonu gibi.
-- **Sınırlar:** Kontrol aralığından kısa kopmalar görünmeyebilir. Home Assistant yeniden başladığında Uptime ölçümü baştan başlar; kameranın kendi açık kalma süresi okunmaz.
-
 ## Yapılandırma
 
 - **Config entry verisi:** `host`, `cloud_password`, `is_klap`.
-- **Seçenekler:** `scan_interval` (saniye, en az 5, varsayılan 5) ve `port_check_interval` (saniye, 1–60, varsayılan 1). Değişiklikler yeniden bağlanmadan uygulanır.
+- **Seçenekler:** `scan_interval` (saniye, en az 5, varsayılan 5). Değişiklik yeniden bağlanmadan uygulanır.
 - **Benzersiz kimlik:** Kameranın MAC adresi (`aa:bb:cc:dd:ee:ff`). MAC yoksa `dev_id`, o da yoksa IP.
 - **Kamera ekleme:** Bir kez giriş yapılır, MAC, ad ve KLAP türü alınır, bağlantı kapatılır. Aynı kamera zaten ekliyse yalnızca IP'si güncellenir.
 - **Şifre yenileme:** Yeni şifreyle giriş denenir; başarılıysa kaydedilir ve entegrasyon yeniden yüklenir.
@@ -222,7 +200,7 @@ Tapo Android uygulaması 3.21.112 incelenerek karşılaştırıldı.
 | Sorgu | `getMost`, ~90 komut, 30 saniye | 1 istek, 5 saniye (ayarlanabilir) |
 | Alarm komutu | önce eski komutlar; `setAlertConfig`'te tüm ayar | yalnızca `setAlertConfig`, yalnızca değişen alan |
 | Yazmadan önce/sonra | önce okumaz; sonra `getMost` ile yeniler | önce okur, gerekmiyorsa yazmaz; sonra okumaz |
-| Özellikler | görüntü, hareket, PTZ, ... | yalnızca alarm, bildirim, yeniden başlatma, bağlantı tanılama |
+| Özellikler | görüntü, hareket, PTZ, ... | yalnızca alarm, bildirim, yeniden başlatma |
 
 ## Testler
 
@@ -234,7 +212,6 @@ Testlerin kapsadıkları:
 - **Formlar:** kamera ekleme, hatalar, şifre yenileme, yeniden yapılandırma ve seçenekler.
 - **Hata yönetimi:** kurulumda ve sorguda giriş reddi toleransı.
 - **Kamera ulaşılamazken:** anahtarların "kullanılamıyor" olması ve geri gelmesi; eski bağlantı sensörlerinin kaldırılması.
-- **Bağlantı kontrolü:** port sonuçlarının sınıflandırılması, tek takılmanın kopma sayılmaması, art arda iki hatada kopma, geri geliş ve Uptime, başlangıçta kopuk kamera, kontrol aralığı seçeneği.
 
 ```bash
 pip install pytest-homeassistant-custom-component pytapo==3.4.19

@@ -22,12 +22,6 @@ CONF_SCAN_INTERVAL = "scan_interval"
 DEFAULT_SCAN_INTERVAL = 5
 MIN_SCAN_INTERVAL = 5
 
-# How often the camera's port 443 is checked for the connection entities.
-CONF_PORT_CHECK_INTERVAL = "port_check_interval"
-DEFAULT_PORT_CHECK_INTERVAL = 1
-MIN_PORT_CHECK_INTERVAL = 1
-MAX_PORT_CHECK_INTERVAL = 60
-
 ALARM_SECTION = "chn1_msg_alarm_info"
 PUSH_SECTION = "chn1_msg_push_info"
 MODE_SOUND = "sound"

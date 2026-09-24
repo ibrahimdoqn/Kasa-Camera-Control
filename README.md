@@ -21,8 +21,6 @@ Nasıl çalıştığının ayrıntıları: [ARCHITECTURE.md](ARCHITECTURE.md)
 | `switch.<kamera>_alarm_isigi` | Alarm çalınca ışık kullanılsın mı |
 | `switch.<kamera>_bildirimler` | Tapo uygulaması bildirimlerini açar/kapatır |
 | `button.<kamera>_yeniden_baslat` | Kamerayı yeniden başlatır (Tanılama bölümünde) |
-| `binary_sensor.<kamera>_baglanti` | Kamera bağlı mı; son kopmanın ayrıntıları (Tanılama bölümünde) |
-| `sensor.<kamera>_uptime` | Kameranın ne zamandır kesintisiz çalıştığı (Tanılama bölümünde) |
 
 - Ses veya ışıktan en az biri açık kalmalıdır; kamera bunu zorunlu tutar.
 - Varlık kimlikleri Home Assistant'ın diline göre oluşur. Örneğin İngilizce kurulumda `switch.<kamera>_alarm_sound` olur.
@@ -50,10 +48,7 @@ Nasıl çalıştığının ayrıntıları: [ARCHITECTURE.md](ARCHITECTURE.md)
 ## Ayarlar
 Ayarlar → Cihazlar ve Hizmetler → **Kasa Camera Control** → kamera:
 
-- **Yapılandır:**
-  - **Sorgulama aralığı (saniye):** Alarm ve bildirim ayarlarının kaç saniyede bir okunacağı. Varsayılan 5, en az 5.
-  - **Bağlantı kontrol aralığı (saniye):** Bağlantı ve Uptime için kameranın kaç saniyede bir kontrol edileceği. Varsayılan 1, en az 1, en fazla 60.
-  - Değişiklikler hemen uygulanır.
+- **Yapılandır:** Sorgulama aralığı (saniye). Varsayılan 5, en az 5. Değişiklik hemen uygulanır.
 - **⋮ → Yeniden yapılandır:** IP adresini veya bulut şifresini değiştirir. Yeni IP'de başka bir kamera cevap verirse değişiklik kaydedilmez.
 
 ## Yerel çalışma
@@ -79,25 +74,8 @@ automation:
 
 Alarm zaten açıksa kameraya bir şey yazılmaz; otomasyonu gönül rahatlığıyla sık çalıştırabilirsiniz.
 
-## Bağlantı tanılama
-Entegrasyon kameranın **443 portuna saniyede bir** (ayarlanabilir) bağlanıp hemen kapatır. Giriş yapmaz, kameranın ayarlarına dokunmaz. Sonuç, cihaz sayfasının **Tanılama** bölümünde iki sensörde görünür:
-
-- **Bağlantı:** *Bağlı* veya *Bağlantı kesildi*. Tek bir başarısız kontrol takılma sayılır; art arda iki kontrol başarısız olursa bağlantı kesik sayılır (kesinti ilk başarısız kontrolden başlar).
-- **Uptime:** Kameranın kesintisiz çalışmaya başladığı an; "3 saat önce" gibi görünür. Bağlantı yokken *Bilinmiyor*. Home Assistant yeniden başladığında ölçüm baştan başlar.
-
-**Bağlantı** sensörünün öznitelikleri:
-
-| Öznitelik | Anlamı |
-|---|---|
-| Son kopma | Zamanı |
-| Son kopma sebebi | *Kamera ağda, servisleri yeniden başlıyor* (port bağlantıyı reddetti; alarm yazmasından sonraki çökmeler böyle görünür) veya *Kamera ağda değil* (cevap yok: Wi-Fi, elektrik, tamamen yeniden başlama) |
-| Son kesinti süresi (sn) | Kesintinin kaç saniye sürdüğü (bağlantı geri gelince yazılır) |
-| Kesinti başlangıcı | Şu an kesinti varsa başladığı zaman |
-
-Bağlantı kontrolü alarm sorgularından bağımsızdır: sorgu hataları bu sensörleri değiştirmez, bu sensörler de anahtarları etkilemez.
-
 ## Sorun giderme
-- **Anahtarlar sık sık "kullanılamıyor" oluyor:** Kamera o anda ağda değildir veya servislerini yeniden başlatıyordur. Tanılama'daki **Bağlantı** sensörünün **Son kopma sebebi** hangisi olduğunu gösterir. **Ping** entegrasyonuyla kameranın IP'si için bir sensör ekleyin; ping de düşüyorsa sorun Wi-Fi'da veya kameradadır.
+- **Anahtarlar sık sık "kullanılamıyor" oluyor:** Kamera o anda ağda değildir veya servislerini yeniden başlatıyordur. **Ping** entegrasyonuyla kameranın IP'si için bir sensör ekleyin; ping de düşüyorsa sorun Wi-Fi'da veya kameradadır.
 - **Alarm anahtarı kısa süre sonra eski değerine dönüyor:** Kamera yazmayı kabul edip hemen ardından çökmüş ve yeni ayarı kaydetmeden yeniden başlamıştır (RTSP de kopar). Bu kameranın firmware hatasıdır; anahtar kameranın gerçek durumunu gösterir. Tapo uygulamasından firmware güncellemesine bakın.
 - **Şifre soruluyor:** Kamera girişi art arda 4 kez reddetmiştir. Tapo uygulamasına giriş yaptığınız TP-Link hesabının şifresini girin. Art arda yanlış denemeden sonra kamera girişi bir süre kilitler; birkaç dakika bekleyin.
 - **Formda `host`, `cloud_password` gibi ham alan adları görünüyor:** Arayüz çevirileri yüklenmemiştir. Tarayıcıda Ctrl+F5 ile yenileyin veya mobil uygulamayı kapatıp açın.

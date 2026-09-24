@@ -52,14 +52,12 @@
     "step": {
       "init": {
         "title": "Camera options",
-        "description": "Set how often the camera is polled and how often its connection is checked. Changes apply at once, without reconnecting.",
+        "description": "Set how often the camera is polled. The change applies at once, without reconnecting.",
         "data": {
-          "scan_interval": "Polling interval (seconds)",
-          "port_check_interval": "Connection check interval (seconds)"
+          "scan_interval": "Polling interval (seconds)"
         },
         "data_description": {
-          "scan_interval": "How often the alarm and notification settings are read. Default 5, at least 5. A higher value puts less load on the camera; changes made in the Tapo app show up later in Home Assistant.",
-          "port_check_interval": "How often the camera's port 443 is checked (for Connection and Uptime under Diagnostic). Default 1, at least 1, at most 60. The check only connects and closes; it does not log in or touch the camera's settings."
+          "scan_interval": "How often the alarm and notification settings are read. Default 5, at least 5. A higher value puts less load on the camera; changes made in the Tapo app show up later in Home Assistant."
         }
       }
     }
@@ -82,34 +80,6 @@
     "button": {
       "reboot": {
         "name": "Reboot"
-      }
-    },
-    "binary_sensor": {
-      "connection": {
-        "name": "Connection",
-        "state_attributes": {
-          "last_disconnect": {
-            "name": "Last disconnect"
-          },
-          "last_disconnect_reason": {
-            "name": "Last disconnect reason",
-            "state": {
-              "restarting": "Camera on the network, services restarting (connection refused)",
-              "unreachable": "Camera not on the network (no answer)"
-            }
-          },
-          "last_outage_seconds": {
-            "name": "Last outage (s)"
-          },
-          "down_since": {
-            "name": "Down since"
-          }
-        }
-      }
-    },
-    "sensor": {
-      "uptime": {
-        "name": "Uptime"
       }
     }
   }

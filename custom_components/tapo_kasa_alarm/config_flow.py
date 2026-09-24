@@ -18,9 +18,6 @@ from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import format_mac
 from homeassistant.helpers.selector import (
-    NumberSelector,
-    NumberSelectorConfig,
-    NumberSelectorMode,
     TextSelector,
     TextSelectorConfig,
     TextSelectorType,
@@ -30,13 +27,9 @@ from .api import AuthenticationError, CameraError, basic_info, connect
 from .const import (
     CONF_CLOUD_PASSWORD,
     CONF_IS_KLAP,
-    CONF_PORT_CHECK_INTERVAL,
     CONF_SCAN_INTERVAL,
-    DEFAULT_PORT_CHECK_INTERVAL,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
-    MAX_PORT_CHECK_INTERVAL,
-    MIN_PORT_CHECK_INTERVAL,
     MIN_SCAN_INTERVAL,
 )
 
@@ -178,7 +171,7 @@ class TapoAlarmConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class TapoAlarmOptionsFlow(OptionsFlow):
-    """Polling and port check interval options."""
+    """Polling interval option."""
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -196,23 +189,6 @@ class TapoAlarmOptionsFlow(OptionsFlow):
                             CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
                         ),
                     ): vol.All(vol.Coerce(int), vol.Range(min=MIN_SCAN_INTERVAL)),
-                    vol.Required(
-                        CONF_PORT_CHECK_INTERVAL,
-                        default=self.config_entry.options.get(
-                            CONF_PORT_CHECK_INTERVAL, DEFAULT_PORT_CHECK_INTERVAL
-                        ),
-                    ): vol.All(
-                        NumberSelector(
-                            NumberSelectorConfig(
-                                min=MIN_PORT_CHECK_INTERVAL,
-                                max=MAX_PORT_CHECK_INTERVAL,
-                                step=1,
-                                mode=NumberSelectorMode.BOX,
-                                unit_of_measurement="s",
-                            )
-                        ),
-                        vol.Coerce(int),
-                    ),
                 }
             ),
         )
